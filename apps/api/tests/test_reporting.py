@@ -1,4 +1,4 @@
-"""CSV exports actually stream.
+"""CSV exports actually stream, and the dashboard counts what it claims to.
 
 A generator-backed `StreamingHttpResponse` does not touch a row until someone
 consumes it, so an export that names a field that does not exist looks fine
@@ -6,8 +6,11 @@ until an office downloads it. These tests consume the stream.
 """
 
 import pytest
+from rest_framework.request import Request
 
-from apps.api.reporting import ExportView
+from apps.academics.models import AcademicSession, ClassArm, ClassLevel, Subject, Term
+from apps.api.reporting import AnalyticsView, ExportView
+from apps.attendance.models import AttendanceStatus, StudentAttendance
 from apps.people.models import Staff, Student
 from apps.tenants.db import schema_context
 
@@ -44,3 +47,53 @@ def test_the_staff_export_streams(rf, school):
 
     assert len(rows) == 2
     assert rows[1].startswith("KC/S/001,Ade,Bola")
+
+
+def test_the_dashboard_attendance_rate_ignores_per_subject_rows(rf, school):
+    """One absent day, then two present periods on that same day.
+
+    Counting all three makes the school look 67% present on a day the pupil
+    never came in. The tile reads the daily register only — the slice a report
+    card already uses — so the day counts once and the rate is 0.
+    """
+    with schema_context(school.schema_name):
+        session = AcademicSession.objects.create(
+            name="2025/2026", start_date="2025-09-01", end_date="2026-07-31", is_current=True
+        )
+        term = Term.objects.create(
+            session=session,
+            index=1,
+            name="First Term",
+            start_date="2025-09-01",
+            end_date="2025-12-15",
+            is_current=True,
+        )
+        level = ClassLevel.objects.get(code="JSS1")
+        arm = ClassArm.objects.create(level=level, name="A")
+        student = Student.objects.create(
+            admission_number="KC/25/0001",
+            first_name="Ngozi",
+            last_name="Ali",
+            current_level=level,
+            current_arm=arm,
+        )
+        StudentAttendance.objects.create(
+            student=student, term=term, date="2025-09-15", status=AttendanceStatus.ABSENT
+        )
+        for code in ("MTH", "ENG"):
+            subject = Subject.objects.create(code=code, title=code)
+            StudentAttendance.objects.create(
+                student=student,
+                term=term,
+                date="2025-09-15",
+                subject=subject,
+                status=AttendanceStatus.PRESENT,
+            )
+
+        # A DRF view reads `query_params`, and only `dispatch` normally does the
+        # wrapping that puts it there.
+        attendance = AnalyticsView().list(Request(rf.get("/"))).data["attendance"]
+
+    assert attendance["records"] == 1
+    assert attendance["present"] == 0
+    assert attendance["rate"] == 0

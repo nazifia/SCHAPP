@@ -103,7 +103,11 @@ class AnalyticsView(viewsets.ViewSet):
         term = lookup_param(request, "term", Term) or _current(Term, is_current=True)
 
         enrolments = Enrolment.objects.filter(session=session, status=EnrolmentStatus.ACTIVE)
-        attendance = StudentAttendance.objects.all()
+        # The daily register only, the same slice `_attendance_totals` puts on a
+        # report card. A school running per-period marking too has one row per
+        # subject per day, so counting both weights those days by the size of
+        # the timetable and the rate stops being "how full was the school".
+        attendance = StudentAttendance.objects.filter(subject__isnull=True)
         if term is not None:
             attendance = attendance.filter(date__range=(term.start_date, term.end_date))
         marked = attendance.count()

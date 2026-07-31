@@ -209,6 +209,31 @@ def test_the_collection_summary_adds_up(school, setup):
         assert {row["category"] for row in summary["by_category"]} == {"OTHER"}
 
 
+def test_the_category_split_reconciles_to_billed_once_a_discount_lands(school, setup):
+    """A discount hangs off the invoice, so the split is gross by construction.
+
+    What must hold is that the two are reconcilable rather than equal: the
+    summary returns the discount so a proprietor reading the tiles can see why
+    the categories add up to more than the school actually billed.
+    """
+    with schema_context(school.schema_name):
+        services.generate_invoices(structure=setup["structure"])
+        for invoice in Invoice.objects.all():
+            services.issue_invoice(invoice)
+
+        discounted = Invoice.objects.first()
+        discounted.discount = Decimal("15000.00")
+        discounted.recompute_totals()
+        discounted.save(update_fields=["discount", "subtotal", "total", "updated_at"])
+
+        summary = selectors.collection_summary(session=setup["session"], term=setup["term"])
+        charged = sum(row["charged"] for row in summary["by_category"])
+        assert charged == Decimal("300000.00")
+        assert summary["discount"] == Decimal("15000.00")
+        assert summary["billed"] == Decimal("285000.00")
+        assert charged - summary["discount"] == summary["billed"]
+
+
 def test_the_counter_can_find_one_bill_and_the_owing_list_excludes_the_rest(school, setup):
     """The bursary's lookup, exercised through the filter backends themselves.
 

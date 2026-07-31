@@ -96,6 +96,13 @@ def collection_summary(*, session=None, term=None) -> dict:
 
     The three numbers a proprietor asks for, and the fourth question they ask
     straight afterwards — *which* fee is not coming in.
+
+    `by_category` sums invoice *lines*, and a discount hangs off the invoice
+    rather than any one line, so the split is gross and adds up to `subtotal`,
+    not to `billed`. That is the only honest place to put it — a whole-invoice
+    discount belongs to no single category and spreading it across them would
+    invent a number the bursar never entered. `discount` is returned alongside
+    so the two reconcile: sum(by_category) - discount == billed.
     """
     invoices = Invoice.objects.alive().exclude(
         status__in=[InvoiceStatus.DRAFT, InvoiceStatus.CANCELLED]
@@ -108,6 +115,7 @@ def collection_summary(*, session=None, term=None) -> dict:
     totals = invoices.aggregate(
         billed=Sum("total"),
         collected=Sum("amount_paid"),
+        discount=Sum("discount"),
         invoices=Count("id"),
         settled=Count("id", filter=Q(status=InvoiceStatus.PAID)),
     )
@@ -117,13 +125,14 @@ def collection_summary(*, session=None, term=None) -> dict:
     by_category = (
         InvoiceLine.objects.filter(invoice__in=invoices)
         .values("category")
-        .annotate(billed=Sum("amount"))
-        .order_by("-billed")
+        .annotate(charged=Sum("amount"))
+        .order_by("-charged")
     )
     return {
         "billed": billed,
         "collected": collected,
         "outstanding": billed - collected,
+        "discount": totals["discount"] or ZERO,
         "collection_rate": _rate(collected, billed),
         "invoices": totals["invoices"] or 0,
         "settled": totals["settled"] or 0,
