@@ -205,7 +205,29 @@ class PageBody extends StatelessWidget {
 }
 
 /// Shows the API's message, which is already written for a user.
+///
+/// A SnackBar is painted by the page's Scaffold, so anything drawn *over* that
+/// page hides it: a full-height bottom sheet — which is how every edit form
+/// arrives on a phone — buries the message completely, and the refusal reads
+/// to the user as a button that does nothing. From a sheet or a dialog the
+/// message therefore comes back as a dialog of its own, which is a route and
+/// so sits above whatever opened it.
 void showApiMessage(BuildContext context, String message) {
+  if (ModalRoute.of(context) is PopupRoute) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    return;
+  }
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
     ..showSnackBar(SnackBar(content: Text(message)));

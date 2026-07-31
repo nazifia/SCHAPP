@@ -1300,4 +1300,171 @@ void main() {
       expect(await session.api.pendingCount, 0);
     });
   });
+
+  group('the students screen', () {
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    /// The two-column layout puts the form in the right-hand pane, which shares
+    /// its Scaffold with the "Add student" FAB. The FAB paints over the body's
+    /// bottom-right — where the form's own save button sits — so without the
+    /// clearance the registrar has no button to press and cannot save at all.
+    testWidgets('the pane save button is not buried under the FAB', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final sent = <http.Request>[];
+      final store = OfflineStore(await SharedPreferences.getInstance());
+      final client = MockClient((request) async {
+        if (request.method == 'POST') {
+          sent.add(request);
+          return http.Response('{"id":"new"}', 201);
+        }
+        if (request.url.path.endsWith('/arms/')) {
+          return http.Response(
+            '[{"id":"arm-gold","label":"SS2 Gold","level":"level-ss2",'
+            '"capacity":40,"enrolled":1,"is_active":true}]',
+            200,
+          );
+        }
+        return http.Response('[]', 200);
+      });
+      final session =
+          Session(
+              api: ApiClient(store: store, httpClient: client),
+              store: store,
+            )
+            ..user = {
+              'full_name': 'Registrar',
+              'permissions': ['people.manage_student'],
+            };
+
+      await tester.pumpWidget(
+        MaterialApp(home: StudentsScreen(session: session)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add student'));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byType(SingleChildScrollView).last,
+        const Offset(0, -2000),
+      );
+      await tester.pumpAndSettle();
+
+      final save = find.widgetWithText(FilledButton, 'Add');
+      expect(
+        tester.getRect(save).overlaps(
+          tester.getRect(find.byType(FloatingActionButton)),
+        ),
+        isFalse,
+      );
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'First name'),
+        'Ada',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Last name'),
+        'Obi',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+
+      expect(sent.single.url.path, endsWith('/people/students/'));
+    });
+
+    /// On a phone the form is a full-height bottom sheet, and a SnackBar is
+    /// painted by the page's Scaffold underneath it — the refusal landed behind
+    /// the sheet and the registrar saw a button that did nothing.
+    testWidgets('a refusal from inside the sheet is actually readable', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final store = OfflineStore(await SharedPreferences.getInstance());
+      final client = MockClient((request) async {
+        if (request.method == 'POST') {
+          return http.Response(
+            '{"error":{"code":"ARM_FULL","message":"SS2 Gold is full."}}',
+            400,
+          );
+        }
+        if (request.url.path.endsWith('/arms/')) {
+          return http.Response(
+            '[{"id":"arm-gold","label":"SS2 Gold","level":"level-ss2",'
+            '"capacity":40,"enrolled":1,"is_active":true}]',
+            200,
+          );
+        }
+        return http.Response('[]', 200);
+      });
+      final session =
+          Session(
+              api: ApiClient(store: store, httpClient: client),
+              store: store,
+            )
+            ..user = {
+              'full_name': 'Registrar',
+              'permissions': ['people.manage_student'],
+            };
+
+      await tester.pumpWidget(
+        MaterialApp(home: StudentsScreen(session: session)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add student'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'First name'),
+        'Ada',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Last name'),
+        'Obi',
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byType(SingleChildScrollView).last,
+        const Offset(0, -2000),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+      await tester.pumpAndSettle();
+
+      // Not merely present — on screen and on top of the sheet.
+      expect(find.text('SS2 Gold is full.').hitTestable(), findsOneWidget);
+      // And the form is still there to correct, not popped.
+      await tester.tap(find.widgetWithText(TextButton, 'OK'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, 'First name'), findsOneWidget);
+    });
+  });
+
+  group('showApiMessage', () {
+    testWidgets('on a page it stays a snackbar', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showApiMessage(context, 'Something went wrong'),
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.text('Something went wrong').hitTestable(), findsOneWidget);
+    });
+  });
 }

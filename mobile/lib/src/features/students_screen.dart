@@ -613,7 +613,12 @@ class _StudentFormState extends State<_StudentForm> {
           20,
           20,
           20,
-          20 + MediaQuery.viewInsetsOf(context).bottom,
+          // As a pane the form shares the Scaffold with the "Add student" FAB,
+          // which paints over the body's bottom-right — exactly where the save
+          // button sits. Without this the button is under the FAB and cannot be
+          // tapped at all. A sheet is its own route and has no FAB over it.
+          (widget.onClose == null ? 20 : 84) +
+              MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: SingleChildScrollView(
           child: Column(
