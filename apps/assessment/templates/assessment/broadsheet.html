@@ -1,0 +1,43 @@
+{% extends "assessment/_base.html" %}
+
+{% block page_size %}A4 landscape{% endblock %}
+
+{% block doc_title %}{{ branding.labels.RESULT_SHEET }} — {{ sheet.term }}{% endblock %}
+
+{% block content %}
+<table class="grid">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Name</th>
+      <th>Number</th>
+      {% for subject in sheet.subjects %}
+        <th class="num">{{ subject.code }}</th>
+      {% endfor %}
+      <th class="num">Average</th>
+      <th class="num">Pos</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in sheet.rows %}
+      <tr>
+        <td class="num">{{ forloop.counter }}</td>
+        <td>{{ row.full_name }}</td>
+        <td>{{ row.admission_number }}</td>
+        {% for cell in row.cells %}
+          <td class="num">{% if cell %}{{ cell.total|floatformat:"-2" }} {{ cell.grade }}{% else %}—{% endif %}</td>
+        {% endfor %}
+        <td class="num"><b>{{ row.average|default_if_none:"—" }}</b></td>
+        <td class="num">{{ row.position|default_if_none:"—" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">Nothing computed for this cohort yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="signature">
+  {{ branding.labels.TEACHER }} ______________________ &nbsp;&nbsp;
+  {{ branding.labels.HEAD }} ______________________
+</div>
+{% endblock %}

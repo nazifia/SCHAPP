@@ -1,0 +1,82 @@
+{% extends "assessment/_base.html" %}
+{% comment %}
+ponytail: extends the assessment document shell rather than duplicating its
+CSS. It is the school's print stationery, not an assessment thing — if a third
+app ever needs it, move that base to apps/common/templates/documents/ and
+change the four templates that extend it.
+{% endcomment %}
+
+{% block doc_title %}Fee invoice — {{ invoice.number }}{% endblock %}
+
+{% block content %}
+<table class="meta">
+  <tr>
+    <td class="label">Name</td><td><b>{{ invoice.student.full_name }}</b></td>
+    <td class="label">Invoice no.</td><td>{{ invoice.number }}</td>
+  </tr>
+  <tr>
+    <td class="label">Number</td><td>{{ invoice.student.display_number }}</td>
+    <td class="label">{{ branding.labels.TERM }}</td>
+    <td>{{ invoice.term.name|default:invoice.session.name }}</td>
+  </tr>
+  <tr>
+    <td class="label">Issued</td><td>{{ invoice.issued_at|date:"j M Y"|default:"—" }}</td>
+    <td class="label">Due</td><td>{{ invoice.due_date|date:"j M Y"|default:"—" }}</td>
+  </tr>
+</table>
+
+<br/>
+<table class="grid">
+  <thead>
+    <tr><th>Description</th><th>Category</th><th class="num">Amount ({{ branding.currency }})</th></tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+      <tr>
+        <td>{{ line.description }}</td>
+        <td>{{ line.get_category_display }}</td>
+        <td class="num">{{ line.amount|floatformat:2 }}</td>
+      </tr>
+    {% endfor %}
+    <tr>
+      <td colspan="2"><b>Subtotal</b></td>
+      <td class="num"><b>{{ invoice.subtotal|floatformat:2 }}</b></td>
+    </tr>
+    {% if invoice.discount %}
+      <tr><td colspan="2">Discount</td><td class="num">-{{ invoice.discount|floatformat:2 }}</td></tr>
+    {% endif %}
+    <tr>
+      <td colspan="2"><b>Total payable</b></td>
+      <td class="num"><b>{{ invoice.total|floatformat:2 }}</b></td>
+    </tr>
+    <tr><td colspan="2">Paid to date</td><td class="num">{{ invoice.amount_paid|floatformat:2 }}</td></tr>
+    <tr>
+      <td colspan="2"><b>Balance</b></td>
+      <td class="num"><b>{{ invoice.balance|floatformat:2 }}</b></td>
+    </tr>
+  </tbody>
+</table>
+
+{% if payments %}
+  <br/>
+  <table class="grid">
+    <thead>
+      <tr><th>Receipt</th><th>Date</th><th>Method</th><th>Status</th><th class="num">Amount</th></tr>
+    </thead>
+    <tbody>
+      {% for payment in payments %}
+        <tr>
+          <td>{{ payment.reference }}</td>
+          <td>{{ payment.paid_at|date:"j M Y"|default:"—" }}</td>
+          <td>{{ payment.get_method_display }}</td>
+          <td>{{ payment.get_status_display }}</td>
+          <td class="num">{{ payment.amount|floatformat:2 }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+
+{% if invoice.note %}<div class="comment">{{ invoice.note }}</div>{% endif %}
+<div class="signature">Bursar ______________________</div>
+{% endblock %}

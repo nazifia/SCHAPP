@@ -1,0 +1,85 @@
+{% comment %}
+Student identity cards, one per page at CR80 (the size of a bank card), so a
+sheet comes off the printer ready for the laminator. The office prints a whole
+class in one request, which is the only way anybody prints these.
+
+The QR is a signed verification URL, not the student's id: a gateman scanning
+a card gets a yes/no from the server, and a card cut off a photocopy fails
+because the signature covers the identifier.
+{% endcomment %}
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  @page { size: 85.6mm 54mm; margin: 0; }
+  body { font-family: Helvetica, sans-serif; font-size: 7pt; color: #111; }
+  .card { width: 85.6mm; height: 54mm; }
+  .band { background: {{ branding.primary_color }}; color: #fff; padding: 2mm 3mm; }
+  .band .school { font-size: 8.5pt; font-weight: bold; }
+  .band .kind { font-size: 6pt; text-transform: uppercase; letter-spacing: 1px; }
+  .body { padding: 2mm 3mm; }
+  .photo { width: 20mm; height: 24mm; border: 0.5pt solid #999; }
+  .name { font-size: 10pt; font-weight: bold; }
+  .number { font-size: 8pt; letter-spacing: 0.5px; }
+  .field { color: #555; }
+  .qr { width: 17mm; height: 17mm; }
+  .verify { font-size: 4.5pt; color: #777; word-wrap: break-word; }
+  .foot { font-size: 5.5pt; color: #555; padding: 0 3mm; }
+</style>
+</head>
+<body>
+{% for card in cards %}
+  <div class="card">
+    <div class="band">
+      <div class="school">{{ branding.header }}</div>
+      <div class="kind">{{ branding.labels.STUDENT|default:"Student" }} identity card</div>
+    </div>
+
+    <div class="body">
+      <table>
+        <tr>
+          <td style="width: 22mm;">
+            {% if card.photo %}
+              <img src="{{ card.photo }}" class="photo"/>
+            {% else %}
+              <div class="photo"></div>
+            {% endif %}
+          </td>
+          <td style="vertical-align: top;">
+            <div class="name">{{ card.student.full_name }}</div>
+            <div class="number">{{ card.student.display_number }}</div>
+            <table>
+              <tr>
+                <td class="field">{{ branding.labels.CLASS|default:"Class" }}</td>
+                <td>{{ card.class_name|default:"—" }}</td>
+              </tr>
+              {% if card.programme %}
+                <tr><td class="field">Programme</td><td>{{ card.programme }}</td></tr>
+              {% endif %}
+              <tr>
+                <td class="field">{{ branding.labels.SESSION|default:"Session" }}</td>
+                <td>{{ card.session|default:"—" }}</td>
+              </tr>
+              <tr><td class="field">Valid to</td><td>{{ card.valid_to|default:"—" }}</td></tr>
+            </table>
+          </td>
+          <td style="width: 18mm; text-align: right; vertical-align: top;">
+            {% if card.verification.qr %}
+              <img src="{{ card.verification.qr }}" class="qr"/>
+            {% endif %}
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="foot">
+      If found, return to {{ branding.institution }}.
+      {% if card.verification.url %}
+        <div class="verify">Verify: {{ card.verification.url }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% if not forloop.last %}<pdf:nextpage/>{% endif %}
+{% endfor %}
+</body>
+</html>

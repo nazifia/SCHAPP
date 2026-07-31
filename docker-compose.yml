@@ -1,0 +1,75 @@
+name: schapp
+
+x-django: &django
+  build:
+    context: .
+    args:
+      REQUIREMENTS: requirements/dev.txt
+  env_file: .env
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.dev
+    DATABASE_URL: mysql://schapp:schapp@db:3306/schapp
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    EMAIL_HOST: mailhog
+    EMAIL_PORT: 1025
+  volumes:
+    - .:/app
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  db:
+    image: mysql:8.4
+    # The app creates one database per school at runtime; docker/mysql-grants.sql
+    # widens the schapp account from its one MYSQL_DATABASE to the whole
+    # `schapp_%` family, which is what makes CREATE DATABASE possible for it.
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_0900_ai_ci
+      --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE
+    environment:
+      MYSQL_DATABASE: schapp
+      MYSQL_USER: schapp
+      MYSQL_PASSWORD: schapp
+      MYSQL_ROOT_PASSWORD: schapp
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ./docker/mysql-grants.sql:/docker-entrypoint-initdb.d/10-grants.sql:ro
+    ports: ["3306:3306"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pschapp"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  web:
+    <<: *django
+    command: python manage.py runserver 0.0.0.0:8000
+    ports: ["8000:8000"]
+
+  worker:
+    <<: *django
+    command: celery -A config worker -l info
+
+  beat:
+    <<: *django
+    command: celery -A config beat -l info -S django_celery_beat.schedulers:DatabaseScheduler
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports: ["8025:8025"]
+
+volumes:
+  mysqldata:

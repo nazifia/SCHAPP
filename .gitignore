@@ -1,0 +1,28 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+media/
+staticfiles/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+# One SQLite file per school in local development, plus the migrated template
+# they are copied from.
+.tenant-databases/
+.pytest-tenant-databases/
+.DS_Store
+node_modules/
+# Flutter
+app/.dart_tool/
+app/build/
+app/.flutter-plugins*

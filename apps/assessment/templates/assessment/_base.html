@@ -1,0 +1,58 @@
+{% comment %}
+Shared shell for every printed document.
+
+Deliberately plain CSS: xhtml2pdf supports a subset, and a report card that
+renders identically on a bursar's ten-year-old printer beats one that needs a
+layout engine. Every noun comes from `labels`, so the same templates print
+"Term"/"Subject" for a school and "Semester"/"Course" for a polytechnic.
+{% endcomment %}
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  @page { size: {% block page_size %}A4 portrait{% endblock %}; margin: 1.4cm; }
+  body { font-family: Helvetica, sans-serif; font-size: 9pt; color: #111; }
+  .header { border-bottom: 2px solid {{ branding.primary_color }}; padding-bottom: 6px; }
+  .header h1 { font-size: 15pt; margin: 0; color: {{ branding.primary_color }}; }
+  .header .motto { font-style: italic; font-size: 8pt; }
+  .header .address { font-size: 8pt; color: #555; }
+  .crest { width: 60px; height: 60px; }
+  .doc-title { text-align: center; font-size: 11pt; font-weight: bold;
+               margin: 8px 0; text-transform: uppercase; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; }
+  table.grid th, table.grid td { border: 0.5pt solid #999; padding: 3px 4px; }
+  table.grid th { background: #eee; font-size: 8pt; text-align: left; }
+  td.num, th.num { text-align: right; }
+  .meta td { padding: 2px 4px; font-size: 9pt; }
+  .label { color: #555; }
+  .footer { position: fixed; bottom: 0; left: 0; right: 0;
+            font-size: 7pt; color: #777; border-top: 0.5pt solid #ccc; padding-top: 3px; }
+  .signature { margin-top: 26px; font-size: 8pt; }
+  .comment { border: 0.5pt solid #999; padding: 4px; margin-top: 6px; min-height: 22px; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <table>
+      <tr>
+        <td style="width: 70px;">
+          {% if branding.logo %}<img src="{{ branding.logo }}" class="crest"/>{% endif %}
+        </td>
+        <td>
+          <h1>{{ branding.header }}</h1>
+          {% if branding.address %}<div class="address">{{ branding.address }}</div>{% endif %}
+          {% if branding.motto %}<div class="motto">{{ branding.motto }}</div>{% endif %}
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="doc-title">{% block doc_title %}{% endblock %}</div>
+  {% block content %}{% endblock %}
+
+  <div class="footer">
+    {{ branding.institution }} — generated {% now "j M Y H:i" %}.
+    This document is not valid without the school stamp.
+  </div>
+</body>
+</html>

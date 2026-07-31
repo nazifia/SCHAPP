@@ -1,0 +1,40 @@
+{% extends "assessment/_base.html" %}
+
+{% block doc_title %}Official receipt — {{ payment.reference }}{% endblock %}
+
+{% block content %}
+<table class="meta">
+  <tr>
+    <td class="label">Received from</td>
+    <td><b>{{ payment.payer_name|default:invoice.student.full_name }}</b></td>
+    <td class="label">Receipt no.</td><td>{{ payment.reference }}</td>
+  </tr>
+  <tr>
+    <td class="label">On behalf of</td><td>{{ invoice.student.full_name }}</td>
+    <td class="label">Date</td><td>{{ payment.paid_at|date:"j M Y H:i" }}</td>
+  </tr>
+  <tr>
+    <td class="label">{{ branding.labels.TERM }}</td>
+    <td>{{ invoice.term.name|default:invoice.session.name }}</td>
+    <td class="label">Method</td>
+    <td>{{ payment.get_method_display }}{% if payment.gateway %} ({{ payment.gateway }}){% endif %}</td>
+  </tr>
+</table>
+
+<br/>
+<table class="grid">
+  <tbody>
+    <tr>
+      <td><b>Amount received</b></td>
+      <td class="num"><b>{{ branding.currency }}{{ payment.amount|floatformat:2 }}</b></td>
+    </tr>
+    <tr><td>Against invoice</td><td class="num">{{ invoice.number }}</td></tr>
+    <tr><td>Invoice total</td><td class="num">{{ invoice.total|floatformat:2 }}</td></tr>
+    <tr><td>Paid to date</td><td class="num">{{ invoice.amount_paid|floatformat:2 }}</td></tr>
+    <tr><td><b>Balance</b></td><td class="num"><b>{{ invoice.balance|floatformat:2 }}</b></td></tr>
+  </tbody>
+</table>
+
+{% if payment.note %}<div class="comment">{{ payment.note }}</div>{% endif %}
+<div class="signature">Bursar ______________________</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "assessment/_base.html" %}
+
+{% block doc_title %}Academic transcript{% endblock %}
+
+{% block content %}
+<table class="meta">
+  <tr>
+    <td class="label">Name</td><td><b>{{ transcript.student.full_name }}</b></td>
+    <td class="label">Number</td><td>{{ transcript.student.display_number }}</td>
+  </tr>
+  <tr>
+    <td class="label">Programme</td>
+    <td>{{ transcript.student.programme|default:"—" }}</td>
+    <td class="label">Status</td><td>{{ transcript.student.get_status_display }}</td>
+  </tr>
+</table>
+
+{% for block in transcript.terms %}
+  <br/>
+  <b>{{ block.session }} — {{ block.term }}
+     {% if block.level %}({{ block.level }}{% if block.programme %}, {{ block.programme }}{% endif %}){% endif %}</b>
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>Code</th><th>Title</th><th class="num">Units</th>
+        <th class="num">%</th><th>Grade</th><th class="num">Point</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for subject in block.subjects %}
+        <tr>
+          <td>{{ subject.code }}</td>
+          <td>{{ subject.title }}</td>
+          <td class="num">{{ subject.credit_units }}</td>
+          <td class="num">{{ subject.percentage }}</td>
+          <td>{{ subject.grade }}</td>
+          <td class="num">{{ subject.grade_point }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="font-size: 8pt;">
+    Average {{ block.average }}%
+    {% if block.gpa is not None %} &nbsp; GPA {{ block.gpa }} &nbsp; CGPA {{ block.cgpa }}{% endif %}
+    &nbsp; Units earned {{ block.credit_units_earned }}
+  </div>
+{% empty %}
+  <p>No results have been published for this student.</p>
+{% endfor %}
+
+<br/>
+<table class="meta">
+  <tr>
+    <td class="label">Total credit units earned</td><td><b>{{ transcript.total_credit_units }}</b></td>
+    {% if transcript.cgpa is not None %}
+      <td class="label">Final CGPA</td><td><b>{{ transcript.cgpa }}</b></td>
+    {% endif %}
+  </tr>
+</table>
+
+<table style="margin-top: 20px;">
+  <tr>
+    <td style="vertical-align: bottom;">
+      <div class="signature">
+        Registrar ______________________ &nbsp;&nbsp; Date ______________
+      </div>
+    </td>
+    {% if verification.url %}
+      <td style="width: 90px; text-align: right;">
+        {% if verification.qr %}<img src="{{ verification.qr }}" style="width: 80px;"/>{% endif %}
+        <div style="font-size: 5.5pt; color: #777; word-wrap: break-word;">
+          Scan to verify this document.<br/>{{ verification.url }}
+        </div>
+      </td>
+    {% endif %}
+  </tr>
+</table>
+{% endblock %}

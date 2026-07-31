@@ -1,0 +1,28 @@
+Django>=5.2,<6.0
+djangorestframework>=3.16
+django-environ>=0.12
+# Development runs on SQLite, which ships with Python; MySQL is production
+# only. The driver is here rather than in prod.txt so that a dev container or
+# a CI job pointed at MySQL needs no extra install. Wheels exist for Linux and
+# Windows; building from source needs libmysqlclient headers, which the
+# Dockerfile installs.
+mysqlclient>=2.2
+celery[redis]>=5.5
+redis>=5.2
+django-celery-beat>=2.8
+drf-spectacular>=0.28
+django-filter>=25.1
+djangorestframework-simplejwt>=5.5
+argon2-cffi>=23.1
+cryptography>=44
+phonenumbers>=9.0
+django-cors-headers>=4.7
+Pillow>=11.1
+# Report cards, broadsheets and transcripts: HTML templates to PDF, with no
+# browser or GTK/Pango stack to install in the container.
+xhtml2pdf>=0.2.17
+# Verification QR codes on transcripts and ID cards. Pure Python, no
+# dependencies of its own, and the import is deferred like xhtml2pdf's: a
+# server without it still prints the document, with the URL in text.
+segno>=1.6
+whitenoise>=6.9

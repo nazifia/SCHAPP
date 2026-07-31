@@ -1,0 +1,67 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{# Overrides django/contrib/admin/templates/admin/base_site.html. `branding` is
+   copied from it unchanged; `nav-global` is where the tenant selector goes,
+   because it is the one block Django leaves empty in the header. #}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {% if admin_tenant %}{{ admin_tenant.name }}{% else %}{{ site_title|default:_('Django site admin') }}{% endif %}{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}
+{% if admin_tenant_choices %}
+<form id="tenant-switcher" method="post" action="{% url 'admin-switch-tenant' %}">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.path }}">
+  <label for="tenant-switcher-select">{% translate "Institution" %}</label>
+  <select id="tenant-switcher-select" name="tenant">
+    <option value="">— {% translate "Platform" %} —</option>
+    {% for choice in admin_tenant_choices %}
+      <option value="{{ choice.slug }}"{% if admin_tenant and choice.pk == admin_tenant.pk %} selected{% endif %}>{{ choice.name }} ({{ choice.slug }})</option>
+    {% endfor %}
+  </select>
+  <button type="submit">{% translate "Switch" %}</button>
+</form>
+
+{# The banner is not decoration. Every page below it is a different school's
+   data than the one this admin normally shows, and the only thing separating
+   an edit to the right institution from an edit to the wrong one is knowing
+   which is selected. #}
+{% if admin_tenant %}
+<p id="tenant-banner">
+  {% blocktranslate with name=admin_tenant.name slug=admin_tenant.slug %}Working inside {{ name }} ({{ slug }}) — changes here belong to that institution.{% endblocktranslate %}
+</p>
+{% endif %}
+
+<style>
+  /* Wraps rather than pushing the header sideways: a select sizes itself to its
+     widest option, and the widest option here is a school's full name. */
+  #tenant-switcher {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem;
+    margin-left: 1rem;
+    max-width: 100%;
+  }
+  #tenant-switcher select { max-width: 100%; }
+  #tenant-switcher label { font-weight: 600; }
+  @media (max-width: 767px) { #tenant-switcher { margin-left: 0; } }
+  #tenant-banner {
+    background: var(--message-warning-bg, #ffc);
+    border: 1px solid var(--border-color, #cc9);
+    border-radius: 4px;
+    color: var(--body-fg, #333);
+    font-weight: 600;
+    margin: .5rem 0 0;
+    padding: .5rem .75rem;
+  }
+</style>
+{% endif %}
+{% endblock %}
