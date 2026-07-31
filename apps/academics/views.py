@@ -224,6 +224,23 @@ class SubjectViewSet(StructureViewSet):
     filterset_fields = ["level", "department", "stream", "category", "is_active"]
     search_fields = ["code", "title"]
 
+    def get_queryset(self):
+        """`?for_enrolment=` narrows the catalogue to one student's own.
+
+        Not a filterset field, because none of these rules is an equality: each
+        one is "the student's, or unrestricted", and level is a bound rather
+        than a match. `term` narrows it further to the semester the course is
+        offered in — optional, since a catalogue is worth listing outside one.
+        """
+        queryset = super().get_queryset()
+        enrolment = lookup_param(self.request, "for_enrolment", Enrolment)
+        if enrolment is None:
+            return queryset
+        offered = selectors.subjects_offered_to(
+            enrolment, term=lookup_param(self.request, "term", Term)
+        )
+        return queryset.filter(pk__in=offered.values("pk"))
+
     @extend_schema(responses={200: SubjectSerializer(many=True)})
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def mine(self, request):
@@ -268,7 +285,9 @@ class EnrolmentViewSet(ProtectDependentsMixin, TenantScopedViewSet, viewsets.Mod
 
     queryset = Enrolment.objects.select_related("student", "level", "class_arm", "programme")
     serializer_class = EnrolmentSerializer
-    filterset_fields = ["session", "level", "class_arm", "programme", "status"]
+    # `student` is what the course-registration screen filters on: it has a
+    # pupil and a term, and the enrolment is the row that joins them.
+    filterset_fields = ["student", "session", "level", "class_arm", "programme", "status"]
     permission_classes = [ManageEnrolment]
 
     def get_queryset(self):
@@ -327,7 +346,10 @@ class EnrolmentViewSet(ProtectDependentsMixin, TenantScopedViewSet, viewsets.Mod
 class SubjectRegistrationViewSet(TenantScopedViewSet, viewsets.ModelViewSet):
     queryset = SubjectRegistration.objects.select_related("subject", "term", "enrolment__student")
     serializer_class = SubjectRegistrationSerializer
-    filterset_fields = ["term", "status", "subject", "is_carryover"]
+    # `enrolment` so the registration screen can ask for one student's term
+    # rather than pulling every registration the school made and filtering it
+    # on the device.
+    filterset_fields = ["enrolment", "term", "status", "subject", "is_carryover"]
     permission_classes = [IsAuthenticated]
     http_method_names = ["get", "post", "delete", "head", "options"]
 
@@ -344,7 +366,11 @@ class SubjectRegistrationViewSet(TenantScopedViewSet, viewsets.ModelViewSet):
         request=RegisterSubjectsSerializer,
         responses={201: SubjectRegistrationSerializer(many=True)},
     )
-    @action(detail=False, methods=["post"])
+    # The viewset is open to any authenticated user because a student reads
+    # their own registrations off it, but writing them is the registry's job:
+    # unlike the list, this action takes an enrolment id straight off the
+    # request and never passes it through `students_visible_to`.
+    @action(detail=False, methods=["post"], permission_classes=[ManageEnrolment])
     def register(self, request):
         serializer = RegisterSubjectsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

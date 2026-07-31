@@ -120,6 +120,15 @@ const _actions = [
     'ID cards',
     'people.manage_student',
   ),
+  // What fills the queue below. Registry-side, so it holds the enrolment
+  // permission rather than the approval one — the office registers, the
+  // adviser signs.
+  _Action(
+    '/registration',
+    Icons.playlist_add_check_outlined,
+    'Register courses',
+    'academics.manage_enrolment',
+  ),
   // The adviser's and HOD's queue. Both steps hold the same permission, and
   // the screen splits them by the state each is waiting on.
   _Action(

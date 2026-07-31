@@ -33,6 +33,47 @@ def subjects_taught_by(staff, *, term=None) -> QuerySet[Subject]:
     return Subject.objects.filter(pk__in=assignments.values("subject_id")).distinct()
 
 
+def subjects_offered_to(enrolment: Enrolment, *, term=None) -> QuerySet[Subject]:
+    """The catalogue one student can actually pick from.
+
+    `check_registration` already refuses the wrong stream and the wrong
+    semester, but only after the course has been ticked and sent — the
+    registration screen was listing every active subject in the school, so a
+    tertiary catalogue of several hundred courses arrived whole and the
+    refusals arrived one round trip later.
+
+    A null on the subject means "not restricted that way", so each rule reads
+    "mine, or nobody's": a general-studies course with no department is offered
+    to every programme, and a subject with no stream to every stream.
+
+    Level is the one bound that is not equality. A carryover is by definition a
+    course from a level the student has already left — `_is_carryover` exists
+    to mark exactly that — so anything at or below theirs stays listed and only
+    the levels above come off.
+    """
+    subjects = Subject.objects.filter(is_active=True)
+
+    if enrolment.level_id:
+        subjects = subjects.filter(
+            Q(level__order__lte=enrolment.level.order) | Q(level__isnull=True)
+        )
+    if enrolment.programme_id:
+        subjects = subjects.filter(
+            Q(department=enrolment.programme.department_id) | Q(department__isnull=True)
+        )
+
+    stream_id = enrolment.student.stream_id
+    subjects = subjects.filter(
+        (Q(stream=stream_id) | Q(stream__isnull=True)) if stream_id else Q(stream__isnull=True)
+    )
+
+    if term is not None:
+        subjects = subjects.filter(
+            Q(semester_offered=term.index) | Q(semester_offered__isnull=True)
+        )
+    return subjects
+
+
 def teaches(staff, *, subject, class_arm=None, level=None, term=None) -> bool:
     """The gate for score entry and attendance marking."""
     if staff is None:

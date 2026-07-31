@@ -19,6 +19,7 @@ import 'features/id_cards_screen.dart';
 import 'features/import_screen.dart';
 import 'features/notices_screen.dart';
 import 'features/people_admin_screen.dart';
+import 'features/registration_screen.dart';
 import 'features/results_screen.dart';
 import 'features/score_entry_screen.dart';
 import 'features/structure_screen.dart';
@@ -198,6 +199,10 @@ GoRouter buildRouter(Session session, ThemeController theme) => GoRouter(
         GoRoute(
           path: '/approvals',
           builder: (context, state) => ApprovalsScreen(session: session),
+        ),
+        GoRoute(
+          path: '/registration',
+          builder: (context, state) => RegistrationScreen(session: session),
         ),
         GoRoute(
           path: '/delivery',

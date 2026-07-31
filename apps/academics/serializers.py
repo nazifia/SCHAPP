@@ -246,7 +246,10 @@ class SubjectRegistrationSerializer(ExpandableSerializerMixin, serializers.Model
     # An approval queue is read by a person, and neither an enrolment id nor a
     # subject id tells them whose registration they are refusing.
     student_name = serializers.CharField(source="enrolment.student.full_name", read_only=True)
-    subject_name = serializers.CharField(source="subject.name", read_only=True)
+    # `subject.name` does not exist — the column is `title` — and a read-only
+    # field whose source is missing is dropped from the payload rather than
+    # raising, so the approval queue listed every course with a blank name.
+    subject_name = serializers.CharField(source="subject.title", read_only=True)
 
     class Meta:
         model = SubjectRegistration

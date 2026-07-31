@@ -16,6 +16,7 @@ import 'package:schapp/src/features/attendance_screen.dart';
 import 'package:schapp/src/features/classes_screen.dart';
 import 'package:schapp/src/features/fee_structures_screen.dart';
 import 'package:schapp/src/features/fees_screen.dart';
+import 'package:schapp/src/features/registration_screen.dart';
 import 'package:schapp/src/features/score_entry_screen.dart';
 import 'package:schapp/src/features/structure_screen.dart';
 import 'package:schapp/src/features/students_screen.dart';
@@ -237,6 +238,30 @@ void main() {
       ]);
       expect(groups.single.studentName, 'Unknown student');
       expect(groups.single.creditUnits, 0);
+    });
+  });
+
+  group('the registration sheet', () {
+    test('a settled course is only re-tickable when it can be retried', () {
+      expect(canPick(null), isTrue);
+      // Both of these keep their row and the server revives it.
+      expect(canPick('REJECTED'), isTrue);
+      expect(canPick('DROPPED'), isTrue);
+      // These are already on the term; ticking one would write nothing.
+      expect(canPick('SUBMITTED'), isFalse);
+      expect(canPick('ADVISER_APPROVED'), isFalse);
+      expect(canPick('APPROVED'), isFalse);
+    });
+
+    test('units add up, and an unpriced course is not a crash', () {
+      expect(
+        totalUnits([
+          {'credit_units': 3},
+          {'credit_units': '2'},
+          {'id': 'no-units'},
+        ]),
+        5,
+      );
     });
   });
 

@@ -251,11 +251,18 @@ class Repository {
   /// The subject/course catalogue. `search` is server-side over code and
   /// title, the same way the staff list works — a tertiary catalogue runs to
   /// several hundred courses and the client holds one page of them.
+  ///
+  /// `forEnrolment` narrows it to what one student may actually take — their
+  /// level and below, their programme's department, their stream — and `term`
+  /// to the semester it is offered in. The server owns those rules because it
+  /// is the one that enforces them at registration.
   Future<List<Map<String, dynamic>>> subjects({
     String? level,
     String? category,
     bool? active,
     String? search,
+    String? forEnrolment,
+    String? term,
   }) => _list(
     '/academics/subjects/',
     query: {
@@ -264,6 +271,8 @@ class Repository {
       'category': ?category,
       'is_active': ?active?.toString(),
       'search': ?search,
+      'for_enrolment': ?forEnrolment,
+      'term': ?term,
     },
   );
 
@@ -289,15 +298,62 @@ class Repository {
   Future<void> deleteSubject(String id) =>
       api.delete('/academics/subjects/$id/');
 
+  /// One student's cohort memberships. The registration screen has a pupil and
+  /// a term and needs the enrolment that joins them, which is the row every
+  /// registration hangs off.
+  Future<List<Map<String, dynamic>>> enrolments({
+    String? student,
+    String? session,
+    String? status,
+  }) => _list(
+    '/academics/enrolments/',
+    query: {
+      'page_size': '50',
+      'student': ?student,
+      'session': ?session,
+      'status': ?status,
+    },
+  );
+
+  /// Register a whole term's courses in one call.
+  ///
+  /// All or nothing on purpose: the server checks every course — prerequisite,
+  /// credit ceiling, registration window — before it writes any of them, and
+  /// refuses the whole set with `REGISTRATION_REJECTED` and a row per failure
+  /// rather than leaving a half-registered semester behind.
+  Future<List<Map<String, dynamic>>> registerSubjects({
+    required String enrolment,
+    required String term,
+    required List<String> subjects,
+    bool submit = true,
+  }) async {
+    final response = await api.post(
+      '/academics/registrations/register/',
+      body: {
+        'enrolment': enrolment,
+        'term': term,
+        'subjects': subjects,
+        'submit': submit,
+      },
+    );
+    return rows(response.data);
+  }
+
   /// Course registrations awaiting a decision. `status` is one of DRAFT,
   /// SUBMITTED, ADVISER_APPROVED, APPROVED, REJECTED, DROPPED — the queue
   /// screen asks for the two that are still open.
   Future<List<Map<String, dynamic>>> registrations({
     String? term,
     String? status,
+    String? enrolment,
   }) => _list(
     '/academics/registrations/',
-    query: {'page_size': '200', 'term': ?term, 'status': ?status},
+    query: {
+      'page_size': '200',
+      'term': ?term,
+      'status': ?status,
+      'enrolment': ?enrolment,
+    },
   );
 
   /// Two steps, one endpoint: an adviser approves, then the HOD approves with

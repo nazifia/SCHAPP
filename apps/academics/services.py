@@ -492,6 +492,23 @@ def check_registration(enrolment: Enrolment, term: Term, subject: Subject) -> Re
             subject, False, "WRONG_STREAM", f"{subject.code} is not offered in this stream."
         )
 
+    # A department is the one restriction the catalogue had and this did not, so
+    # the screen hid an off-department course while the endpoint still took it.
+    # Null on either side is not a mismatch: a course with no department is a
+    # general-studies one open to everybody, and an enrolment with no programme
+    # is a secondary school, where departments do not apply at all.
+    if (
+        subject.department_id
+        and enrolment.programme_id
+        and subject.department_id != enrolment.programme.department_id
+    ):
+        return RegistrationCheck(
+            subject,
+            False,
+            "WRONG_DEPARTMENT",
+            f"{subject.code} belongs to another department.",
+        )
+
     missing = unmet_prerequisites(enrolment, subject, term)
     if missing:
         codes = ", ".join(s.code for s in missing)

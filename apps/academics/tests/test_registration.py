@@ -108,6 +108,58 @@ def test_exceeding_the_maximum_credit_units_is_refused(poly, setup):
     assert exc.value.details["maximum"] == 24
 
 
+def test_a_course_from_another_department_is_refused(poly, setup):
+    """The catalogue stopped listing these; the endpoint still took them."""
+    with schema_context(poly.schema_name):
+        other = Department.objects.create(
+            faculty=setup["dept"].faculty, code="MTH", name="Mathematics"
+        )
+        theirs = Subject.objects.create(
+            code="MTH201", title="Algebra", credit_units=3, department=other
+        )
+        # No department at all is general studies, open to every programme.
+        general = Subject.objects.create(code="GNS101", title="Use of English", credit_units=2)
+
+        with pytest.raises(AcademicError) as exc:
+            register_subjects(
+                enrolment=setup["enrolment"], term=setup["term"], subjects=[theirs, general]
+            )
+        assert exc.value.code == "REGISTRATION_REJECTED"
+        assert [row["subject"] for row in exc.value.details["rows"]] == ["MTH201"]
+        assert exc.value.details["rows"][0]["code"] == "WRONG_DEPARTMENT"
+
+        assert (
+            len(
+                register_subjects(
+                    enrolment=setup["enrolment"], term=setup["term"], subjects=[general]
+                )
+            )
+            == 1
+        )
+
+
+def test_a_secondary_school_has_no_departments_to_mismatch(poly, setup):
+    """An enrolment with no programme is a secondary one, where the rule above
+    would refuse every subject the school had filed under a department."""
+    with schema_context(poly.schema_name):
+        other = Department.objects.create(
+            faculty=setup["dept"].faculty, code="MTH", name="Mathematics"
+        )
+        maths = Subject.objects.create(code="MTH101", title="Maths", department=other)
+        pupil = Student.objects.create(
+            admission_number="JSS/25/0001",
+            first_name="Ngozi",
+            last_name="Okafor",
+            current_level=setup["level"],
+        )
+        enrolment = enrol_student(
+            student=pupil, session=setup["session"], level=setup["level"], programme=None
+        )
+        assert (
+            len(register_subjects(enrolment=enrolment, term=setup["term"], subjects=[maths])) == 1
+        )
+
+
 def test_a_rejected_batch_registers_nothing(poly, setup):
     from apps.academics.models import SubjectRegistration
 
