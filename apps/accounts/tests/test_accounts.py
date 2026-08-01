@@ -50,6 +50,18 @@ def test_permissions_come_from_roles(school):
         assert not user.has_perm_code("assessment.publish_results")
 
 
+def test_several_roles_on_one_user_union_their_permissions(school):
+    """A bursar who also teaches holds both sets, not the last one assigned."""
+    with schema_context(school.schema_name):
+        user = User.objects.create_user("+2348031234567")
+        assign_role(user, "teacher")
+        assign_role(user, "bursar")
+
+        assert sorted(user.roles.values_list("code", flat=True)) == ["bursar", "teacher"]
+        assert user.has_perm_code("assessment.enter_score")  # from teacher
+        assert user.has_perm_code("finance.record_payment")  # from bursar
+
+
 def test_the_owner_wildcard_grants_everything(school):
     with schema_context(school.schema_name):
         user = User.objects.create_user("+2348031234567")
