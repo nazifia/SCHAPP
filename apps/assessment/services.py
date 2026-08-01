@@ -442,7 +442,13 @@ def _apply_term_positions(term_results: list[TermResult]) -> None:
         groups.setdefault(cohort_key(result.enrolment), []).append(result)
 
     for members in groups.values():
-        positions = rank([m.average for m in members])
+        # Tertiary ranks on the GPA, which is what the institution publishes and
+        # what promotion already turns on. A mean of percentages would place a
+        # student who did well in one-unit courses above one who carried the
+        # heavy ones. Falls back to the average the moment any member has no GPA
+        # — a half-graded cohort must not be ranked on two different scales.
+        by_gpa = all(m.gpa is not None for m in members)
+        positions = rank([m.gpa if by_gpa else m.average for m in members])
         for member, position in zip(members, positions, strict=True):
             member.position = position
             member.cohort_size = len(members)

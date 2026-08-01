@@ -5,17 +5,45 @@
 {% block doc_title %}{{ branding.labels.RESULT_SHEET }} — {{ sheet.term }}{% endblock %}
 
 {% block content %}
+<table class="meta">
+  <tr>
+    <td class="label">{{ branding.labels.INSTITUTION }}</td>
+    <td><b>{{ branding.institution }}</b></td>
+    <td class="label">{{ branding.labels.CLASS }}</td>
+    <td><b>{{ sheet.cohort|default:"—" }}</b></td>
+    {# One department and one course of study for the whole sheet head it; a
+       level-wide tertiary sheet mixes programmes and carries them per row. #}
+    {% if sheet.department %}
+      <td class="label">Department</td>
+      <td>{{ sheet.department }}</td>
+    {% endif %}
+    {% if sheet.programme %}
+      <td class="label">{{ branding.labels.CLASS_GROUP }}</td>
+      <td>{{ sheet.programme }}</td>
+    {% endif %}
+    <td class="label">{{ branding.labels.TERM }}</td>
+    <td>{{ sheet.term }}</td>
+  </tr>
+</table>
+
+<br/>
 <table class="grid">
   <thead>
     <tr>
       <th>#</th>
       <th>Name</th>
       <th>Number</th>
+      {% if sheet.mixed_programmes %}<th>{{ branding.labels.CLASS_GROUP }}</th>{% endif %}
       {% for subject in sheet.subjects %}
         <th class="num">{{ subject.code }}</th>
       {% endfor %}
-      <th class="num">Average</th>
-      <th class="num">Pos</th>
+      {% if sheet.uses_grade_points %}
+        <th class="num">GPA</th>
+        <th class="num">CGPA</th>
+      {% else %}
+        <th class="num">Average</th>
+        <th class="num">Pos</th>
+      {% endif %}
     </tr>
   </thead>
   <tbody>
@@ -24,11 +52,17 @@
         <td class="num">{{ forloop.counter }}</td>
         <td>{{ row.full_name }}</td>
         <td>{{ row.admission_number }}</td>
+        {% if sheet.mixed_programmes %}<td>{{ row.programme|default:"—" }}</td>{% endif %}
         {% for cell in row.cells %}
           <td class="num">{% if cell %}{{ cell.total|floatformat:"-2" }} {{ cell.grade }}{% else %}—{% endif %}</td>
         {% endfor %}
-        <td class="num"><b>{{ row.average|default_if_none:"—" }}</b></td>
-        <td class="num">{{ row.position|default_if_none:"—" }}</td>
+        {% if sheet.uses_grade_points %}
+          <td class="num"><b>{{ row.gpa|default_if_none:"—" }}</b></td>
+          <td class="num">{{ row.cgpa|default_if_none:"—" }}</td>
+        {% else %}
+          <td class="num"><b>{{ row.average|default_if_none:"—" }}</b></td>
+          <td class="num">{{ row.position|default_if_none:"—" }}</td>
+        {% endif %}
       </tr>
     {% empty %}
       <tr><td colspan="5">Nothing computed for this cohort yet.</td></tr>

@@ -66,6 +66,18 @@ class _ResultCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(result['full_name'] as String? ?? '', style: text.titleMedium),
+            // Tertiary only: which course of study this result is a result in,
+            // and the department that owns it. Absent in a school.
+            if (result['programme'] != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                [
+                  result['programme'],
+                  result['department'],
+                ].where((part) => part != null).join(' · '),
+                style: text.bodySmall,
+              ),
+            ],
             const SizedBox(height: 4),
             Text(
               '${result['subjects_count']} ${session.label('SUBJECT').toLowerCase()}s',
@@ -81,7 +93,9 @@ class _ResultCard extends StatelessWidget {
                   _Metric(label: 'GPA', value: '${result['gpa']}'),
                 if (result['cgpa'] != null)
                   _Metric(label: 'CGPA', value: '${result['cgpa']}'),
-                if (position != null)
+                // A GPA means a tertiary scale, where the standing is the GPA
+                // and the cohort position is not published at all.
+                if (position != null && result['gpa'] == null)
                   _Metric(
                     label: 'Position',
                     value: cohort == null

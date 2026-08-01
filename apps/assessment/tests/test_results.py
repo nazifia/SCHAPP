@@ -294,6 +294,82 @@ def test_tertiary_gpa_and_cgpa_across_two_semesters(make_tenant, ncc_table):
         assert second.credit_units_earned == 4
 
 
+def test_a_tertiary_cohort_is_ranked_on_the_gpa_not_the_average(make_tenant, ncc_table):
+    """Units are the whole point: a good mark in a one-unit course is worth less
+    than a fair one in a four-unit course, and the position must say so."""
+    poly = make_tenant("credit-poly", institution_type="TERTIARY")
+    with schema_context(poly.schema_name):
+        session = AcademicSession.objects.create(
+            name="2025/2026", start_date="2025-09-01", end_date="2026-07-31", is_current=True
+        )
+        semester = Term.objects.create(
+            session=session,
+            index=1,
+            name="First Semester",
+            start_date="2025-09-01",
+            end_date="2026-01-31",
+            is_current=True,
+        )
+        faculty = Faculty.objects.create(code="SCI", name="Science")
+        department = Department.objects.create(faculty=faculty, code="CSC", name="Computing")
+        programme = Programme.objects.create(
+            department=department, code="ND-CSC", name="Computer Science"
+        )
+        level = ClassLevel.objects.get(code="100")
+        heavy = Subject.objects.create(code="CSC101", title="Computing", credit_units=4)
+        light = Subject.objects.create(code="GNS101", title="Use of English", credit_units=1)
+        components = {c.code: c for c in AssessmentComponent.objects.all()}
+
+        students = []
+        for index, (first, last) in enumerate([("Chidi", "Eze"), ("Ngozi", "Ali")], start=1):
+            student = Student.objects.create(
+                admission_number=f"CSC/25/000{index}",
+                first_name=first,
+                last_name=last,
+                programme=programme,
+                current_level=level,
+            )
+            enrolment = enrol_student(
+                student=student, session=session, level=level, programme=programme
+            )
+            register_subjects(enrolment=enrolment, term=semester, subjects=[heavy, light])
+            enrolment.subject_registrations.update(status="APPROVED")
+            students.append(student)
+
+        chidi, ngozi = students
+        # Chidi: 71% in the four-unit course, 41% in the one-unit — average 56.
+        # Ngozi: 45% and 95% — average 70, the better mean and the worse degree.
+        for subject, marks in [
+            (heavy, {chidi: (21, 50), ngozi: (15, 30)}),
+            (light, {chidi: (11, 30), ngozi: (28, 67)}),
+        ]:
+            mark(semester, subject, components["CA"], [(s, ca) for s, (ca, _) in marks.items()])
+            mark(semester, subject, components["EXAM"], [(s, x) for s, (_, x) in marks.items()])
+        recompute_term(semester)
+
+        first = TermResult.objects.get(enrolment__student=chidi)
+        second = TermResult.objects.get(enrolment__student=ngozi)
+        assert (first.average, first.gpa) == (Decimal("56.00"), Decimal("4.20"))
+        assert (second.average, second.gpa) == (Decimal("70.00"), Decimal("2.60"))
+        assert first.position == 1
+        assert second.position == 2
+
+        # A tertiary result names the department and the course of study it was
+        # earned in — on the sheet, and on the student's own record.
+        from apps.assessment.selectors import broadsheet, transcript_context
+
+        sheet = broadsheet(term=semester, level=level)
+        assert sheet["department"] == "Computing"
+        assert sheet["programme"] == "ND Computer Science"
+        assert sheet["mixed_programmes"] is False
+        assert {row["programme"] for row in sheet["rows"]} == {"ND Computer Science"}
+
+        transcript = transcript_context(chidi)
+        assert transcript["department"] == "Computing"
+        assert transcript["programme"] == "ND Computer Science"
+        assert transcript["terms"][0]["department"] == "Computing"
+
+
 def test_seeing_every_student_is_not_seeing_every_mark(school, secondary):
     """A bursar may look up any pupil in the school. Marks are a separate grant.
 

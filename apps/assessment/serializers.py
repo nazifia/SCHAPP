@@ -130,6 +130,17 @@ class TermResultSerializer(ExpandableSerializerMixin, serializers.ModelSerialize
     student = serializers.UUIDField(source="enrolment.student_id", read_only=True)
     full_name = serializers.CharField(source="enrolment.student.full_name", read_only=True)
     attendance_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    #: Tertiary only, and null for a school: the course of study a result
+    #: belongs to and the department that owns it. A phone showing a result has
+    #: no other way to say which programme it is a result in.
+    programme = serializers.SerializerMethodField()
+    department = serializers.SerializerMethodField()
+
+    def get_programme(self, obj) -> str | None:
+        return str(obj.enrolment.programme) if obj.enrolment.programme_id else None
+
+    def get_department(self, obj) -> str | None:
+        return str(obj.enrolment.programme.department) if obj.enrolment.programme_id else None
 
     class Meta:
         model = TermResult
@@ -138,6 +149,8 @@ class TermResultSerializer(ExpandableSerializerMixin, serializers.ModelSerialize
             "enrolment",
             "student",
             "full_name",
+            "programme",
+            "department",
             "term",
             "subjects_count",
             "total_score",

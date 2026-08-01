@@ -7,10 +7,14 @@
   <tr>
     <td class="label">Name</td><td><b>{{ transcript.student.full_name }}</b></td>
     <td class="label">Number</td><td>{{ transcript.student.display_number }}</td>
+    <td class="label">{{ branding.labels.INSTITUTION }}</td>
+    <td><b>{{ branding.institution }}</b></td>
   </tr>
   <tr>
     <td class="label">Programme</td>
-    <td>{{ transcript.student.programme|default:"—" }}</td>
+    <td>{{ transcript.programme|default:"—" }}</td>
+    <td class="label">Department</td>
+    <td>{{ transcript.department|default:"—" }}</td>
     <td class="label">Status</td><td>{{ transcript.student.get_status_display }}</td>
   </tr>
 </table>

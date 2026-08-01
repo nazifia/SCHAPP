@@ -102,6 +102,13 @@ class _BroadsheetScreenState extends State<BroadsheetScreen> {
   List<Map<String, dynamic>> get _rows =>
       (_sheet?['rows'] as List? ?? const []).cast<Map<String, dynamic>>();
 
+  /// Tertiary: the sheet closes with GPA and CGPA, not average and position.
+  bool get _gradePoints => _sheet?['uses_grade_points'] == true;
+
+  /// A level-wide tertiary sheet holds several programmes, so each row has to
+  /// say which one it belongs to. One programme for all of them needs no column.
+  bool get _mixedProgrammes => _sheet?['mixed_programmes'] == true;
+
   /// One cell of the grid, and what is behind it. A percentage in a column of
   /// forty says nothing on its own — the sheet shows what the mark is made of
   /// and offers the student's record, which is the next question every time.
@@ -119,6 +126,7 @@ class _BroadsheetScreenState extends State<BroadsheetScreen> {
                 subject: _subjects[index],
                 cell: cell.cast<String, dynamic>(),
                 session: widget.session,
+                gradePoints: _gradePoints,
                 onTranscript: () {
                   Navigator.pop(sheetContext);
                   _openTranscript(row);
@@ -229,14 +237,24 @@ class _BroadsheetScreenState extends State<BroadsheetScreen> {
                       dataRowMaxHeight: 40,
                       columns: [
                         const DataColumn(label: Text('Student')),
+                        if (_mixedProgrammes)
+                          DataColumn(
+                            label: Text(widget.session.label('CLASS_GROUP')),
+                          ),
                         for (final subject in _subjects)
                           DataColumn(
                             label: Text(subject['code'] as String? ?? ''),
                             tooltip: subject['title'] as String?,
                             numeric: true,
                           ),
-                        const DataColumn(label: Text('Avg'), numeric: true),
-                        const DataColumn(label: Text('Pos'), numeric: true),
+                        DataColumn(
+                          label: Text(_gradePoints ? 'GPA' : 'Avg'),
+                          numeric: true,
+                        ),
+                        DataColumn(
+                          label: Text(_gradePoints ? 'CGPA' : 'Pos'),
+                          numeric: true,
+                        ),
                       ],
                       rows: [
                         for (final row in _rows)
@@ -246,14 +264,30 @@ class _BroadsheetScreenState extends State<BroadsheetScreen> {
                                 Text(row['full_name'] as String? ?? ''),
                                 onTap: () => _openTranscript(row),
                               ),
+                              if (_mixedProgrammes)
+                                DataCell(Text(_text(row['programme']))),
                               for (
                                 var index = 0;
                                 index < _subjects.length;
                                 index++
                               )
                                 _cell(row, index),
-                              DataCell(Text(_number(row['average']))),
-                              DataCell(Text(_number(row['position']))),
+                              DataCell(
+                                Text(
+                                  _number(
+                                    _gradePoints ? row['gpa'] : row['average'],
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _number(
+                                    _gradePoints
+                                        ? row['cgpa']
+                                        : row['position'],
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                       ],
@@ -275,6 +309,7 @@ class _CellSheet extends StatelessWidget {
     required this.subject,
     required this.cell,
     required this.session,
+    required this.gradePoints,
     required this.onTranscript,
   });
 
@@ -282,6 +317,7 @@ class _CellSheet extends StatelessWidget {
   final Map<String, dynamic> subject;
   final Map<String, dynamic> cell;
   final Session session;
+  final bool gradePoints;
   final VoidCallback onTranscript;
 
   @override
@@ -314,15 +350,24 @@ class _CellSheet extends StatelessWidget {
                   value: '${_number(cell['percentage'])}%',
                 ),
                 _Figure(label: 'Grade', value: _text(cell['grade'])),
-                _Figure(
-                  label: 'In ${session.label('SUBJECT').toLowerCase()}',
-                  value: _number(cell['position']),
-                ),
-                _Figure(label: 'Term average', value: _number(row['average'])),
-                _Figure(
-                  label: 'Term position',
-                  value: _number(row['position']),
-                ),
+                if (!gradePoints)
+                  _Figure(
+                    label: 'In ${session.label('SUBJECT').toLowerCase()}',
+                    value: _number(cell['position']),
+                  ),
+                if (gradePoints) ...[
+                  _Figure(label: 'GPA', value: _number(row['gpa'])),
+                  _Figure(label: 'CGPA', value: _number(row['cgpa'])),
+                ] else ...[
+                  _Figure(
+                    label: 'Term average',
+                    value: _number(row['average']),
+                  ),
+                  _Figure(
+                    label: 'Term position',
+                    value: _number(row['position']),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 16),

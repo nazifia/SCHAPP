@@ -5,14 +5,37 @@
 {% block content %}
 <table class="meta">
   <tr>
+    <td class="label">{{ branding.labels.INSTITUTION }}</td>
+    <td><b>{{ branding.institution }}</b></td>
+    <td class="label">{{ branding.labels.SESSION }}</td>
+    <td>{{ session.name }}</td>
+  </tr>
+  {% if enrolment.programme %}
+    {# A polytechnic slip is filed by department and course of study; a school
+       has neither and files by arm on the next row. #}
+    <tr>
+      <td class="label">Department</td>
+      <td>{{ department|default:"—" }}</td>
+      <td class="label">{{ branding.labels.CLASS_GROUP }}</td>
+      <td>{{ enrolment.programme }}</td>
+    </tr>
+  {% endif %}
+  <tr>
     <td class="label">Name</td><td><b>{{ student.full_name }}</b></td>
     <td class="label">{{ branding.labels.CLASS }}</td>
     <td>{{ enrolment.class_arm|default:enrolment.level }}</td>
   </tr>
   <tr>
     <td class="label">Number</td><td>{{ student.display_number }}</td>
-    <td class="label">Position</td>
-    <td>{{ position|default:"—" }} of {{ result.cohort_size|default:"—" }}</td>
+    {% if result.gpa is not None %}
+      {# A polytechnic result slip stands on the GPA, not on where the student
+         placed in a cohort it does not publish. #}
+      <td class="label">GPA / CGPA</td>
+      <td><b>{{ result.gpa }} / {{ result.cgpa|default_if_none:"—" }}</b></td>
+    {% else %}
+      <td class="label">Position</td>
+      <td>{{ position|default:"—" }} of {{ result.cohort_size|default:"—" }}</td>
+    {% endif %}
   </tr>
   <tr>
     <td class="label">{{ branding.labels.TERM }}</td><td>{{ term.name }}</td>
@@ -33,9 +56,14 @@
       <th class="num">Total</th>
       <th class="num">%</th>
       <th>Grade</th>
-      <th class="num">Class avg</th>
-      <th class="num">Highest</th>
-      <th class="num">Pos</th>
+      {% if result.gpa is not None %}
+        <th class="num">Unit</th>
+        <th class="num">Point</th>
+      {% else %}
+        <th class="num">Class avg</th>
+        <th class="num">Highest</th>
+        <th class="num">Pos</th>
+      {% endif %}
       <th>Remark</th>
     </tr>
   </thead>
@@ -49,9 +77,14 @@
         <td class="num">{{ subject.total|floatformat:"-2" }}</td>
         <td class="num">{{ subject.percentage }}</td>
         <td>{{ subject.grade }}</td>
-        <td class="num">{{ subject.class_average|default_if_none:"—" }}</td>
-        <td class="num">{{ subject.class_highest|default_if_none:"—" }}</td>
-        <td class="num">{{ subject.position }}</td>
+        {% if result.gpa is not None %}
+          <td class="num">{{ subject.credit_units }}</td>
+          <td class="num">{{ subject.grade_point|floatformat:"-2" }}</td>
+        {% else %}
+          <td class="num">{{ subject.class_average|default_if_none:"—" }}</td>
+          <td class="num">{{ subject.class_highest|default_if_none:"—" }}</td>
+          <td class="num">{{ subject.position }}</td>
+        {% endif %}
         <td>{{ subject.remark }}</td>
       </tr>
     {% empty %}

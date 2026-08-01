@@ -145,6 +145,7 @@ def broadsheet(*, term, class_arm=None, level=None) -> dict:
         .select_related(
             "registration__subject",
             "registration__enrolment__student",
+            "registration__enrolment__programme__department",
         )
         .order_by(
             "registration__enrolment__student__last_name",
@@ -159,13 +160,20 @@ def broadsheet(*, term, class_arm=None, level=None) -> dict:
         subjects.setdefault(
             subject.pk, {"id": subject.pk, "code": subject.code, "title": subject.title}
         )
-        student = result.registration.enrolment.student
+        enrolment = result.registration.enrolment
+        student = enrolment.student
         row = students.setdefault(
             student.pk,
             {
                 "student": student.pk,
                 "full_name": student.full_name,
                 "admission_number": student.display_number,
+                # Tertiary: which course of study, and whose department owns it.
+                # Null throughout for a secondary school, which has neither.
+                "programme": str(enrolment.programme) if enrolment.programme_id else None,
+                "department": (
+                    str(enrolment.programme.department) if enrolment.programme_id else None
+                ),
                 "subjects": {},
             },
         )
@@ -186,14 +194,32 @@ def broadsheet(*, term, class_arm=None, level=None) -> dict:
         row["average"] = summary.average if summary else None
         row["position"] = summary.position if summary else None
         row["gpa"] = summary.gpa if summary else None
+        row["cgpa"] = summary.cgpa if summary else None
         # Column-aligned copy: a template cannot look a subject up by id, and a
         # client rendering a grid would have to do this itself anyway.
         row["cells"] = [row["subjects"].get(str(column["id"])) for column in columns]
 
+    rows = sorted(students.values(), key=lambda r: r["full_name"])
+    # One programme for the whole cohort belongs in the heading; a level-wide
+    # tertiary sheet mixes them, and then it belongs in a column, because "whose
+    # student is this?" is the first question asked of any row on it.
+    departments = {row["department"] for row in rows}
+    programmes = {row["programme"] for row in rows}
+    one_department = departments.pop() if len(departments) == 1 else None
+    one_programme = programmes.pop() if len(programmes) == 1 else None
     return {
         "term": str(term),
+        # Whose sheet this is. A printed sheet with no class on it is one a head
+        # of department cannot file, and "all classes" is a real answer.
+        "cohort": str(class_arm or level or "All classes"),
+        "department": one_department,
+        "programme": one_programme,
+        "mixed_programmes": one_programme is None and any(row["programme"] for row in rows),
         "subjects": columns,
-        "rows": sorted(students.values(), key=lambda r: r["full_name"]),
+        "rows": rows,
+        # A GPA anywhere in the cohort means a tertiary scale, and the sheet
+        # closes with GPA/CGPA instead of average and position.
+        "uses_grade_points": any(row["gpa"] is not None for row in rows),
     }
 
 
@@ -238,6 +264,11 @@ def report_card_context(term_result: TermResult) -> dict:
     return {
         "student": enrolment.student,
         "enrolment": enrolment,
+        # The programme is on the enrolment; the department owning it is one hop
+        # further and a tertiary slip is filed under it.
+        "department": (
+            str(enrolment.programme.department) if enrolment.programme_id else None
+        ),
         "term": term_result.term,
         "session": term_result.term.session,
         "result": term_result,
@@ -255,7 +286,12 @@ def transcript_context(student) -> dict:
     """
     term_results = (
         TermResult.objects.filter(enrolment__student=student)
-        .select_related("term", "term__session", "enrolment__level", "enrolment__programme")
+        .select_related(
+            "term",
+            "term__session",
+            "enrolment__level",
+            "enrolment__programme__department",
+        )
         .order_by("term__session__start_date", "term__index")
     )
 
@@ -281,6 +317,11 @@ def transcript_context(student) -> dict:
                     if term_result.enrolment.programme
                     else None
                 ),
+                "department": (
+                    str(term_result.enrolment.programme.department)
+                    if term_result.enrolment.programme
+                    else None
+                ),
                 "subjects": [
                     {
                         "code": r.registration.subject.code,
@@ -300,8 +341,14 @@ def transcript_context(student) -> dict:
         )
 
     latest = term_results.last()
+    # Where the student stands now: the last enrolment's programme, or their own
+    # when nothing has been graded yet. It cannot hang off `student` — the JSON
+    # body replaces that object with a flat three-key dict in the view.
+    programme = (latest.enrolment.programme if latest else None) or student.programme
     return {
         "student": student,
+        "programme": str(programme) if programme else None,
+        "department": str(programme.department) if programme else None,
         "terms": terms,
         "cgpa": latest.cgpa if latest else None,
         "total_credit_units": sum(t["credit_units_earned"] for t in terms),
@@ -336,7 +383,7 @@ def results_visible_to(user) -> QuerySet[TermResult]:
 
     queryset = TermResult.objects.filter(
         enrolment__student__in=students_visible_to(user)
-    ).select_related("enrolment__student", "term")
+    ).select_related("enrolment__student", "enrolment__programme__department", "term")
 
     if user.has_perm_code("assessment.view_all_scores"):
         return queryset

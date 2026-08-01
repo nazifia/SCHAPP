@@ -148,6 +148,116 @@ def test_broadsheet_renders_to_pdf():
     assert pdf.startswith(b"%PDF")
 
 
+def test_a_tertiary_result_slip_leads_with_gpa_and_drops_the_position():
+    """A polytechnic publishes a standing, not a place in a cohort."""
+    from django.template.loader import render_to_string
+
+    context = {
+        "branding": branding(POLY),
+        "student": student(display_number="CSC/25/0001"),
+        "enrolment": SimpleNamespace(
+            class_arm=None, level="100 Level", programme="ND Computer Science"
+        ),
+        "department": "Computing",
+        "term": SimpleNamespace(name="First Semester", index=1),
+        "session": SimpleNamespace(name="2025/2026"),
+        "result": term_result(
+            gpa=Decimal("4.20"),
+            cgpa=Decimal("3.95"),
+            credit_units_registered=12,
+            credit_units_earned=12,
+        ),
+        "position": "3rd",
+        "subjects": [subject_row()],
+    }
+    tertiary = render_to_string("assessment/report_card.html", context)
+    assert "4.20" in tertiary and "3.95" in tertiary
+    assert "Position" not in tertiary and "3rd" not in tertiary
+    # Whose slip this is, and for which cohort.
+    assert "Unity Polytechnic" in tertiary
+    assert "100 Level" in tertiary and "ND Computer Science" in tertiary
+    # The department owns the programme and files the slip.
+    assert "Department" in tertiary and "Computing" in tertiary
+
+    context["result"] = term_result()  # secondary: no grade points
+    secondary = render_to_string("assessment/report_card.html", context)
+    assert "Position" in secondary and "3rd" in secondary
+
+
+def test_a_tertiary_broadsheet_closes_with_gpa_and_cgpa():
+    from django.template.loader import render_to_string
+
+    row = {
+        "full_name": "Ngozi Ali",
+        "admission_number": "CSC/25/0001",
+        "cells": [None],
+        "average": Decimal("71.00"),
+        "position": 1,
+        "gpa": Decimal("4.20"),
+        "cgpa": Decimal("3.95"),
+        "programme": "ND Computer Science",
+        "department": "Computing",
+    }
+    sheet = {
+        "term": "First Semester 2025/2026",
+        "cohort": "100 Level",
+        "department": "Computing",
+        "programme": "ND Computer Science",
+        "mixed_programmes": False,
+        "subjects": [{"id": "1", "code": "CSC101", "title": "Intro to Computing"}],
+        "rows": [row],
+        "uses_grade_points": True,
+    }
+    html = render_to_string(
+        "assessment/broadsheet.html", {"branding": branding(POLY), "sheet": sheet}
+    )
+    assert "GPA" in html and "4.20" in html and "3.95" in html
+    assert "Pos" not in html and "71.00" not in html
+    # A sheet nobody can file is a sheet nobody prints twice.
+    assert "Unity Polytechnic" in html and "100 Level" in html
+    assert "Computing" in html and "ND Computer Science" in html
+
+
+def test_a_level_wide_sheet_names_the_programme_on_every_row():
+    """One heading cannot cover a 100-level sheet that mixes two programmes."""
+    from django.template.loader import render_to_string
+
+    def row(name, programme):
+        return {
+            "full_name": name,
+            "admission_number": "CSC/25/0001",
+            "cells": [None],
+            "gpa": Decimal("4.20"),
+            "cgpa": Decimal("3.95"),
+            "programme": programme,
+            "department": "Computing",
+        }
+
+    html = render_to_string(
+        "assessment/broadsheet.html",
+        {
+            "branding": branding(POLY),
+            "sheet": {
+                "term": "First Semester 2025/2026",
+                "cohort": "100 Level",
+                "department": "Computing",
+                # Two programmes: no single heading, so a column instead.
+                "programme": None,
+                "mixed_programmes": True,
+                "subjects": [{"id": "1", "code": "CSC101", "title": "Intro to Computing"}],
+                "rows": [
+                    row("Ngozi Ali", "ND Computer Science"),
+                    row("Chidi Eze", "ND Statistics"),
+                ],
+                "uses_grade_points": True,
+            },
+        },
+    )
+    assert "ND Computer Science" in html and "ND Statistics" in html
+    # The department is still shared, so it stays in the heading.
+    assert "Computing" in html
+
+
 def test_transcript_renders_with_gpa_for_a_polytechnic():
     pdf = render_pdf(
         "assessment/transcript.html",
@@ -155,6 +265,8 @@ def test_transcript_renders_with_gpa_for_a_polytechnic():
             "branding": branding(POLY),
             "transcript": {
                 "student": student(display_number="CSC/25/0001"),
+                "programme": "ND Computer Science",
+                "department": "Computing",
                 "terms": [
                     {
                         "session": "2025/2026",
