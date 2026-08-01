@@ -1,8 +1,8 @@
-"""The demo seeder's calendar follows the institution type."""
+"""The demo seeder's calendar and structure follow the institution type."""
 
 import pytest
 
-from apps.academics.models import Term
+from apps.academics.models import Programme, Term
 from apps.tenants.db import schema_context
 from apps.tenants.management.commands.seed_demo import Command
 from apps.tenants.models import InstitutionType
@@ -24,3 +24,22 @@ def test_the_seeded_calendar_matches_the_institution(
     with schema_context(tenant.schema_name):
         Command()._calendar(institution_type)
         assert list(Term.objects.order_by("index").values_list("name", flat=True)) == expected
+
+
+def test_a_tertiary_demo_is_seeded_with_a_programme(make_tenant, ncc_table):
+    """Without one, `register_subjects` approves on creation and the adviser
+    queue can never fill — the demo polytechnic behaved as a secondary school."""
+    tenant = make_tenant("demo-tertiary-structure", institution_type=InstitutionType.TERTIARY)
+    with schema_context(tenant.schema_name):
+        _, subjects, programme = Command()._structure(InstitutionType.TERTIARY)
+        assert programme is not None
+        assert programme.department is not None
+        # A full seeded load clears the floor; a partial one trips the override.
+        assert programme.min_credit_units == sum(s.credit_units for s in subjects)
+
+
+def test_a_secondary_demo_gets_no_programme(make_tenant, ncc_table):
+    tenant = make_tenant("demo-secondary-structure", institution_type=InstitutionType.SECONDARY)
+    with schema_context(tenant.schema_name):
+        assert Command()._structure(InstitutionType.SECONDARY)[2] is None
+        assert not Programme.objects.exists()

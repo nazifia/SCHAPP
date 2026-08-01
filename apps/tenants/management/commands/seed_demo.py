@@ -80,11 +80,11 @@ class Command(BaseCommand):
 
         with schema_context(tenant.schema_name):
             session, terms = self._calendar(tenant.institution_type)
-            arms, subjects = self._structure()
+            arms, subjects, programme = self._structure(tenant.institution_type)
             staff = self._staff()
-            students = self._students(options["students"], session, arms)
+            students = self._students(options["students"], session, arms, programme)
             self._teaching(staff, subjects, arms, terms[0])
-            self._registrations(students, subjects, terms[0])
+            self._registrations(students, subjects, terms[0], programme)
             self._marks(terms[0], subjects, staff)
             self._results(terms[0])
             self._attendance(terms[0], students)
@@ -165,8 +165,8 @@ class Command(BaseCommand):
             terms.append(term)
         return session, terms
 
-    def _structure(self):
-        from apps.academics.models import ClassArm, ClassLevel, Subject
+    def _structure(self, institution_type):
+        from apps.academics.models import ClassArm, ClassLevel, Department, Programme, Subject
 
         arms = []
         for level in ClassLevel.objects.order_by("order")[:3]:
@@ -182,7 +182,29 @@ class Command(BaseCommand):
                 code=code, defaults={"title": title, "credit_units": units}
             )
             subjects.append(subject)
-        return arms, subjects
+
+        # A tertiary enrolment without a programme is treated as a secondary one
+        # everywhere it matters: `register_subjects` approves on creation when
+        # `enrolment.programme is None`, so a demo polytechnic seeded without one
+        # had an adviser queue that could never fill, and no credit bounds to
+        # enforce. The minimum is the seeded catalogue's own total, so a full
+        # load clears it and a partial one trips the override the screen offers.
+        programme = None
+        if institution_type == InstitutionType.TERTIARY:
+            department, _ = Department.objects.get_or_create(
+                code="CSC", defaults={"name": "Computer Science"}
+            )
+            programme, _ = Programme.objects.get_or_create(
+                code="ND-CSC",
+                defaults={
+                    "department": department,
+                    "name": "Computer Science",
+                    "duration_years": 2,
+                    "min_credit_units": sum(units for _, _, units in SUBJECTS),
+                    "max_credit_units": 24,
+                },
+            )
+        return arms, subjects, programme
 
     # -- people ------------------------------------------------------------
     def _staff(self):
@@ -233,7 +255,7 @@ class Command(BaseCommand):
             made.append(staff)
         return made
 
-    def _students(self, count: int, session, arms):
+    def _students(self, count: int, session, arms, programme=None):
         from apps.academics.services import enrol_student
         from apps.accounts.models import Role, User
         from apps.people.models import Guardian, Student, StudentGuardian
@@ -250,7 +272,13 @@ class Command(BaseCommand):
                 },
             )
             arm = arms[index % len(arms)]
-            enrol_student(student=student, session=session, level=arm.level, class_arm=arm)
+            enrol_student(
+                student=student,
+                session=session,
+                level=arm.level,
+                class_arm=arm,
+                programme=programme,
+            )
             if created:
                 phone = f"+23481{index:08d}"
                 user, _ = User.objects.get_or_create(
@@ -288,16 +316,40 @@ class Command(BaseCommand):
                     defaults={"level": arm.level},
                 )
 
-    def _registrations(self, students, subjects, term):
-        from apps.academics.models import Enrolment, SubjectRegistration
+    def _registrations(self, students, subjects, term, programme=None):
+        from apps.academics.models import Enrolment, RegistrationStatus, SubjectRegistration
+
+        # A tertiary demo whose every registration is already APPROVED leaves the
+        # approvals screen empty on all three of its tabs, which reads as a broken
+        # screen rather than an empty queue. Three students carry one state each.
+        # Only the refused one loses its marks: `COUNTED_STATUSES` scores a
+        # SUBMITTED registration, which is the reason the queue is worth clearing.
+        queued = (
+            {
+                students[0].pk: (RegistrationStatus.SUBMITTED, ""),
+                students[1].pk: (RegistrationStatus.ADVISER_APPROVED, ""),
+                students[2].pk: (
+                    RegistrationStatus.REJECTED,
+                    "Registered after the add/drop window closed.",
+                ),
+            }
+            if programme and len(students) >= 3
+            else {}
+        )
 
         for student in students:
             enrolment = Enrolment.objects.filter(student=student, session=term.session).first()
             if enrolment is None:
                 continue
+            status, reason = queued.get(student.pk, (RegistrationStatus.APPROVED, ""))
             for subject in subjects:
                 SubjectRegistration.objects.get_or_create(
-                    enrolment=enrolment, subject=subject, term=term
+                    enrolment=enrolment,
+                    subject=subject,
+                    term=term,
+                    # In `defaults`, so topping up a seeded demo never drags a
+                    # decision somebody made on the screen back into the queue.
+                    defaults={"status": status, "rejection_reason": reason},
                 )
 
     # -- assessment --------------------------------------------------------
