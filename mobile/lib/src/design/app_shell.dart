@@ -345,11 +345,16 @@ Future<bool> confirmSignOut(BuildContext context, Session session) async {
 /// Convenience so screens can react to a flush without importing the client.
 Future<void> syncPending(BuildContext context, ApiClient api) async {
   final result = await api.flushOutbox();
-  if (!context.mounted || result.sent + result.rejected == 0) return;
+  final handled = result.sent + result.rejected + result.expired;
+  if (!context.mounted || handled == 0) return;
+  final trouble = [
+    if (result.rejected > 0) '${result.rejected} rejected by the server',
+    if (result.expired > 0) '${result.expired} too old to send',
+  ];
   showApiMessage(
     context,
-    result.rejected == 0
+    trouble.isEmpty
         ? '${result.sent} pending change${result.sent == 1 ? '' : 's'} synced.'
-        : '${result.sent} synced, ${result.rejected} rejected by the server.',
+        : '${result.sent} synced, ${trouble.join(', ')}.',
   );
 }

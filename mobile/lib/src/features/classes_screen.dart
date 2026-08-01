@@ -247,9 +247,15 @@ class _ClassesScreenState extends State<ClassesScreen> {
         enforceCapacity: enforceCapacity,
       );
       _selected.removeAll(enrolments);
-      message =
-          '${seated.length} student${seated.length == 1 ? '' : 's'} '
-          'placed in ${_arm == null ? 'the class' : armCaption(_arm!)}.';
+      final count = seated.isEmpty ? enrolments.length : seated.length;
+      final who = 'student${count == 1 ? '' : 's'}';
+      final where = _arm == null ? 'the class' : armCaption(_arm!);
+      // An empty answer means the placement is in the outbox: the server has
+      // not counted the seats yet, so there is nothing to report as placed.
+      message = seated.isEmpty
+          ? '$count $who queued for $where. They will be placed when there is '
+                'a connection.'
+          : '$count $who placed in $where.';
     } on ApiError catch (error) {
       refusal = error;
     } finally {

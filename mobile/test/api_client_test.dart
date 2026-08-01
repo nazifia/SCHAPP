@@ -460,6 +460,159 @@ void main() {
         throwsA(isA<ApiError>().having((e) => e.isOffline, 'isOffline', true)),
       );
     });
+
+    test('an entry too old to mean what it meant is dropped', () async {
+      // A role change or a term rollover composed a week ago would land over
+      // whatever the school has decided since. Sending it is worse than losing
+      // it, so the flush reports it rather than applying it.
+      final prefs = await SharedPreferences.getInstance();
+      final store = OfflineStore(prefs);
+      await store.enqueue(
+        OutboxEntry(
+          id: 'stale',
+          method: 'PUT',
+          path: '/admin/users/1/roles/',
+          body: {
+            'roles': ['bursar'],
+          },
+          at: DateTime.now().subtract(const Duration(days: 8)),
+        ),
+      );
+
+      var sent = 0;
+      final back = ApiClient(
+        store: store,
+        httpClient: MockClient((_) async {
+          sent++;
+          return http.Response('{}', 200);
+        }),
+      );
+      final result = await back.flushOutbox();
+
+      expect(sent, 0);
+      expect(result.expired, 1);
+      expect(await store.pending(), isEmpty);
+    });
+  });
+
+  group('offline writes read back', () {
+    /// Fills the cache with one list response, then hands back a client that
+    /// cannot reach anything.
+    Future<ApiClient> withCachedList(String body, String path) async {
+      final store = OfflineStore(await SharedPreferences.getInstance());
+      await (ApiClient(
+        store: store,
+        httpClient: MockClient((_) async => http.Response(body, 200)),
+      )..tenantSlug = 'kings-college').get(path);
+      return ApiClient(store: store, httpClient: _dead())
+        ..tenantSlug = 'kings-college';
+    }
+
+    test('a queued write answers with the record, not with null', () async {
+      // Half the screens read a field off what a write returned. Handing them
+      // null turns every offline save into a cast error on the next line.
+      final api = await clientWith(_dead());
+
+      final response = await api.post(
+        '/people/students/',
+        body: {'first_name': 'Ada'},
+        queue: true,
+        label: 'New student',
+      );
+
+      expect(response.queued, isTrue);
+      expect(response.data['first_name'], 'Ada');
+      expect(response.data['_pending'], isTrue);
+      expect(response.data['id'], isNotNull);
+    });
+
+    test('a queued create shows up in the cached list', () async {
+      final api = await withCachedList(
+        '{"results":[{"id":"1","first_name":"Ada"}]}',
+        '/people/students/',
+      );
+
+      await api.post(
+        '/people/students/',
+        body: {'first_name': 'Bola'},
+        queue: true,
+      );
+      final list = await api.get('/people/students/');
+
+      expect(list.fromCache, isTrue);
+      expect(
+        (list.data['results'] as List).map((r) => r['first_name']),
+        ['Ada', 'Bola'],
+      );
+    });
+
+    test('a queued edit lands on the row it edited', () async {
+      final api = await withCachedList(
+        '[{"id":"abc123","status":"ACTIVE"}]',
+        '/people/students/',
+      );
+
+      await api.patch(
+        '/people/students/abc123/',
+        body: {'status': 'GRADUATED'},
+        queue: true,
+      );
+      final list = await api.get('/people/students/');
+
+      expect(list.data.single['status'], 'GRADUATED');
+      expect(list.data.single['_pending'], isTrue);
+    });
+
+    test('a queued delete takes the row out of the cached list', () async {
+      final api = await withCachedList(
+        '[{"id":"abc123"},{"id":"def456"}]',
+        '/people/students/',
+      );
+
+      await api.delete('/people/students/abc123/', queue: true);
+      final list = await api.get('/people/students/');
+
+      expect((list.data as List).map((r) => r['id']), ['def456']);
+    });
+
+    test('an action endpoint does not invent a row', () async {
+      // `/invoices/{id}/issue/` names a verb, not a record. Reading the last
+      // segment as an id would append a row whose id is "issue".
+      final api = await withCachedList(
+        '[{"id":"abc123","status":"DRAFT"}]',
+        '/finance/invoices/',
+      );
+
+      await api.post('/finance/invoices/abc123/issue/', queue: true);
+      final list = await api.get('/finance/invoices/');
+
+      expect(list.data, hasLength(1));
+      expect(list.data.single['status'], 'DRAFT');
+    });
+
+    test('a queued delete replays under the key it first sent', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final store = OfflineStore(prefs);
+      await ApiClient(
+        store: store,
+        httpClient: _dead(),
+      ).delete('/people/students/abc123/', queue: true);
+
+      String? method;
+      String? key;
+      final back = ApiClient(
+        store: store,
+        httpClient: MockClient((request) async {
+          method = request.method;
+          key = request.headers['Idempotency-Key'];
+          return http.Response('', 204);
+        }),
+      );
+
+      expect((await back.flushOutbox()).sent, 1);
+      expect(method, 'DELETE');
+      expect(key, isNotNull);
+    });
   });
 
   group('upload', () {
@@ -558,6 +711,38 @@ void main() {
     expect(await api.download('/people/students/id-cards/'), pdf);
   });
 
+  test('a receipt printed once prints again with no connection', () async {
+    final pdf = Uint8List.fromList([0x25, 0x50, 0x44, 0x46, 0x2d, 0xff, 0x00]);
+    final store = OfflineStore(await SharedPreferences.getInstance());
+    await (ApiClient(
+      store: store,
+      httpClient: MockClient((_) async => http.Response.bytes(pdf, 200)),
+    )..tenantSlug = 'kings-college').download('/finance/payments/7/receipt/');
+
+    final offline = ApiClient(store: store, httpClient: _dead())
+      ..tenantSlug = 'kings-college';
+
+    expect(await offline.download('/finance/payments/7/receipt/'), pdf);
+  });
+
+  test('a PDF too big for the store is fetched but not kept', () async {
+    // A four-hundred-page ID-card batch belongs to a desk with a printer, not
+    // to a phone's key-value store.
+    final huge = Uint8List(OfflineStore.maxFileBytes + 1);
+    final store = OfflineStore(await SharedPreferences.getInstance());
+    await (ApiClient(
+      store: store,
+      httpClient: MockClient((_) async => http.Response.bytes(huge, 200)),
+    )..tenantSlug = 'kings-college').download('/people/students/id-cards/');
+
+    final offline = ApiClient(store: store, httpClient: _dead())
+      ..tenantSlug = 'kings-college';
+    await expectLater(
+      offline.download('/people/students/id-cards/'),
+      throwsA(isA<ApiError>().having((e) => e.isOffline, 'isOffline', true)),
+    );
+  });
+
   test('a role change goes out as PUT, not as a POST', () async {
     // `_dispatch` used to be a two-way branch that fell through to POST, so
     // `put` would have quietly replaced a user's roles by the wrong verb —
@@ -579,9 +764,9 @@ void main() {
     expect(method, 'PUT');
   });
 
-  test('a role change is never queued offline', () async {
-    // A stale set replayed out of an outbox would undo whatever was decided
-    // in between — the whole point of sending the roles as a whole set.
+  test('queueing is opt-in, never the transport default', () async {
+    // Every verb can queue now, but only where the repository asked for it.
+    // A caller that did not ask still finds out that it is offline.
     final api = await clientWith(_dead());
     await expectLater(
       api.put('/admin/users/1/roles/', body: {'roles': const <String>[]}),
@@ -767,6 +952,36 @@ void main() {
       );
 
       expect((await Repository(api).students()).map((r) => r['id']), ['row-0']);
+    });
+  });
+
+  group('store', () {
+    test('the cache evicts the oldest entry once it is full', () async {
+      final store = OfflineStore(await SharedPreferences.getInstance());
+      // 201 puts, oldest-first by write time: entry 0 goes, the newest stays.
+      for (var i = 0; i <= 200; i++) {
+        await store.put('key-$i', '{"i":$i}');
+        // Same-millisecond writes sort equal and the wrong one would be
+        // dropped; a real device spaces its GETs out anyway.
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+
+      expect(await store.get('key-0'), isNull);
+      expect((await store.get('key-200'))?.body, '{"i":200}');
+    });
+
+    test('a corrupt blob is an empty store, not a crash on launch', () async {
+      SharedPreferences.setMockInitialValues({
+        'schapp.cache.v1': 'not json',
+        'schapp.outbox.v1': 'not json either',
+      });
+      final store = OfflineStore(await SharedPreferences.getInstance());
+
+      expect(await store.get('anything'), isNull);
+      expect(await store.pending(), isEmpty);
+      // And it recovers: the next write lands and reads back.
+      await store.put('key', '{"ok":true}');
+      expect((await store.get('key'))?.body, '{"ok":true}');
     });
   });
 }

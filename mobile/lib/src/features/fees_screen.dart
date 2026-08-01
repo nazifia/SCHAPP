@@ -13,9 +13,13 @@ import '../design/theme.dart';
 /// Fees: what is owed, and the button that pays it.
 ///
 /// The list is what the API already scopes — a parent sees their children's
-/// bills, a bursar sees the school's. The pay flow is deliberately *not*
-/// queued offline: an outbox replay of a charge is a second charge, and no
-/// amount of convenience is worth that.
+/// bills, a bursar sees the school's.
+///
+/// Offline, the counter still works: billing, issuing, waiving, adjusting and
+/// taking a payment all queue, and `Idempotency-Key` is what keeps a replayed
+/// receipt from being money counted twice. The *gateway* flow does not queue —
+/// a checkout URL and a verification are round trips to the provider, and
+/// neither means anything produced after the payer has walked away.
 class FeesScreen extends StatefulWidget {
   const FeesScreen({super.key, required this.session});
 
@@ -488,10 +492,20 @@ class _FeesScreenState extends State<FeesScreen> {
         structure: structure['id'] as String,
       );
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => _BillingReportDialog(report: report),
-      );
+      // An empty report is a queued run: the bills are raised when the phone
+      // finds a network, so there is no per-row outcome to show yet.
+      if (report.isEmpty) {
+        showApiMessage(
+          context,
+          'Billing run saved on this device. The invoices will be raised when '
+          'there is a connection.',
+        );
+      } else {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => _BillingReportDialog(report: report),
+        );
+      }
       _key.currentState?.reload();
     } on ApiError catch (e) {
       if (mounted) showApiMessage(context, e.message);

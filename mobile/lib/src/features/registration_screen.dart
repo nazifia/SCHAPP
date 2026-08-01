@@ -170,14 +170,21 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       // A secondary school has no adviser workflow and the server approves on
       // creation, so the confirmation is read off what came back rather than
       // promising a queue nobody at that school looks at.
-      final queued = written.any((row) => row['status'] != 'APPROVED');
+      //
+      // Nothing came back at all means the request is in the outbox — the
+      // prerequisites and the credit ceiling are checked when it lands, so
+      // there is no registration to confirm yet.
+      final count = written.isEmpty ? _picked.length : written.length;
+      final courses = 'course${count == 1 ? '' : 's'}';
+      final approval = written.any((row) => row['status'] != 'APPROVED');
       showApiMessage(
         context,
-        queued
-            ? '${written.length} course${written.length == 1 ? '' : 's'} sent '
-                  'for approval.'
-            : '${written.length} course${written.length == 1 ? '' : 's'} '
-                  'registered.',
+        written.isEmpty
+            ? '$count $courses saved on this device. They will be sent when '
+                  'there is a connection.'
+            : approval
+            ? '$count $courses sent for approval.'
+            : '$count $courses registered.',
       );
       _reload();
     } on ApiError catch (e) {

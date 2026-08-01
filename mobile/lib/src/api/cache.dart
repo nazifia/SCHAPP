@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,10 +25,20 @@ class OfflineStore {
 
   static const _cacheKey = 'schapp.cache.v1';
   static const _outboxKey = 'schapp.outbox.v1';
+  static const _filesKey = 'schapp.files.v1';
   static const _maxEntries = 200;
+
+  /// PDFs go in base64 into the same preferences blob the JSON cache uses, so
+  /// they are kept on a much shorter leash: the last few printed, nothing
+  /// bigger than one report card's worth. A batch of four hundred ID cards is
+  /// past this on purpose — it belongs to a desk with a printer, not to a
+  /// phone's key-value store.
+  static const _maxFiles = 5;
+  static const maxFileBytes = 2 * 1024 * 1024;
 
   SharedPreferences? _prefs;
   Map<String, dynamic>? _cache;
+  Map<String, dynamic>? _files;
   List<Map<String, dynamic>>? _outbox;
 
   Future<SharedPreferences> get _p async =>
@@ -42,9 +53,14 @@ class OfflineStore {
     return _cache!;
   }
 
-  Future<void> put(String key, String body) async {
+  /// [at] is for a rewrite rather than a fetch: folding a queued write into a
+  /// cached list must not make an hour-old list claim it was read just now.
+  Future<void> put(String key, String body, {DateTime? at}) async {
     final cache = await _loadCache();
-    cache[key] = {'body': body, 'at': DateTime.now().toIso8601String()};
+    cache[key] = {
+      'body': body,
+      'at': (at ?? DateTime.now()).toIso8601String(),
+    };
     if (cache.length > _maxEntries) {
       final oldest = cache.entries.toList()
         ..sort(
@@ -65,6 +81,48 @@ class OfflineStore {
       entry['body'] as String,
       DateTime.tryParse(entry['at'] as String? ?? '') ?? DateTime(1970),
     );
+  }
+
+  /// Every cached GET key. The client walks these to fold a queued write into
+  /// the lists that already hold the row.
+  Future<List<String>> keys() async => (await _loadCache()).keys.toList();
+
+  // --- file cache ----------------------------------------------------------
+
+  Future<Map<String, dynamic>> _loadFiles() async {
+    if (_files != null) return _files!;
+    _files = _decodeMap((await _p).getString(_filesKey));
+    return _files!;
+  }
+
+  Future<void> putBytes(String key, Uint8List bytes) async {
+    if (bytes.length > maxFileBytes) return;
+    final files = await _loadFiles();
+    files[key] = {
+      'body': base64Encode(bytes),
+      'at': DateTime.now().toIso8601String(),
+    };
+    if (files.length > _maxFiles) {
+      final oldest = files.entries.toList()
+        ..sort(
+          (a, b) =>
+              (a.value['at'] as String).compareTo(b.value['at'] as String),
+        );
+      for (final entry in oldest.take(files.length - _maxFiles)) {
+        files.remove(entry.key);
+      }
+    }
+    await (await _p).setString(_filesKey, jsonEncode(files));
+  }
+
+  Future<Uint8List?> getBytes(String key) async {
+    final entry = (await _loadFiles())[key];
+    if (entry is! Map) return null;
+    try {
+      return base64Decode(entry['body'] as String);
+    } catch (_) {
+      return null;
+    }
   }
 
   // --- write outbox --------------------------------------------------------
@@ -104,9 +162,11 @@ class OfflineStore {
   /// from the next session on the same device.
   Future<void> clear() async {
     _cache = {};
+    _files = {};
     _outbox = [];
     final prefs = await _p;
     await prefs.remove(_cacheKey);
+    await prefs.remove(_filesKey);
     await prefs.remove(_outboxKey);
   }
 
