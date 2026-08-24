@@ -11,6 +11,7 @@ import hmac
 import logging
 from dataclasses import dataclass
 from datetime import date as date_type
+from datetime import datetime
 
 from django.utils import timezone
 
@@ -47,7 +48,7 @@ class AttendanceRow:
     #: Version the client last saw. None means "I am creating this".
     version: int | None = None
     #: When the device recorded it, which may predate the sync by hours.
-    recorded_at: object = None
+    recorded_at: datetime | None = None
 
 
 def mark_bulk(

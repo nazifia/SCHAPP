@@ -22,7 +22,8 @@ staticfiles/
 .pytest-tenant-databases/
 .DS_Store
 node_modules/
-# Flutter
-app/.dart_tool/
-app/build/
-app/.flutter-plugins*
+# Flutter. The client lives in mobile/; these read app/ until it moved,
+# so every build left .dart_tool/ and build/ showing up as untracked.
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins*
