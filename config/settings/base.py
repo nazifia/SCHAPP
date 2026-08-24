@@ -116,6 +116,14 @@ DOCUMENT_VERIFY_BASE_URL = env(
     default=("http://localhost:8000" if BASE_DOMAIN == "localhost" else f"https://{BASE_DOMAIN}"),
 )
 
+#: How many proxies of ours stand in front of Django. `apps.audit.client_ip`
+#: and DRF's throttles read the `X-Forwarded-For` entry this many places from
+#: the right; everything to its left is the client's to invent. 0 — Django
+#: addressed directly — ignores the header, which is the safe default: a
+#: deployment that trusts a header it does not in fact terminate lets any
+#: caller pick their own identity for the per-IP OTP limit and the audit trail.
+TRUSTED_PROXY_DEPTH = env.int("TRUSTED_PROXY_DEPTH", default=0)
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -357,6 +365,9 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "apps.api.exceptions.envelope_exception_handler",
+    # Same address the audit trail records; see TRUSTED_PROXY_DEPTH. Left unset,
+    # DRF keys a throttle on the whole client-supplied X-Forwarded-For string.
+    "NUM_PROXIES": TRUSTED_PROXY_DEPTH,
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.ScopedRateThrottle",
     ],

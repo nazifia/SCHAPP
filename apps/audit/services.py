@@ -9,15 +9,41 @@ import logging
 from contextlib import nullcontext
 from typing import Any
 
+from django.conf import settings
+
 from .models import AuditLog
 
 logger = logging.getLogger(__name__)
 
 
 def client_ip(request) -> str | None:
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """The caller's address, trusting the proxy chain only as far as we own it.
+
+    `X-Forwarded-For` is written by whoever is talking to us and appended to by
+    each hop, so its *first* entry is the one entry nobody verified: a client
+    that sends its own header chooses what lands here. That is not only a
+    poisoned audit trail — `apps.auth_phone.services` counts OTP requests per
+    IP off this, so rotating a header was enough to buy an unlimited number of
+    codes for a phone from one machine.
+
+    `TRUSTED_PROXY_DEPTH` says how many proxies of our own stand in front of
+    Django. The entry that many places from the *right* is the address the
+    outermost one of them actually observed; everything to its left is the
+    client's to invent. Zero — the default, and correct when Django is
+    addressed directly — ignores the header entirely.
+
+    `REST_FRAMEWORK["NUM_PROXIES"]` is set from the same number so DRF's
+    throttles identify a caller the same way this does.
+    """
+    depth = getattr(settings, "TRUSTED_PROXY_DEPTH", 0)
+    if depth:
+        chain = [
+            part.strip()
+            for part in request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")
+            if part.strip()
+        ]
+        if chain:
+            return chain[-min(depth, len(chain))]
     return request.META.get("REMOTE_ADDR")
 
 
