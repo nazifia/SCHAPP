@@ -3,10 +3,15 @@
 The table exists in every schema: the public copy records platform-level acts
 (impersonation, suspension), each tenant copy records that school's own.
 
-Append-only is enforced in Python here *and* should be enforced in Postgres in
-production by revoking UPDATE/DELETE on this table from the application role —
-see docs/deployment.md. Application-level enforcement stops accidents; only
-the grant stops a compromised app.
+Append-only is enforced in Python here *and* should be enforced in the database
+in production, by revoking UPDATE and DELETE on this table from the role the
+application connects as:
+
+    REVOKE UPDATE, DELETE ON `schapp`.`audit_auditlog` FROM 'schapp'@'%';
+
+Application-level enforcement stops accidents; only the grant stops a
+compromised app. On MySQL that has to be repeated for every tenant database,
+which is what `apps.tenants.db.create_database` provisions.
 """
 
 from django.conf import settings

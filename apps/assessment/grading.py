@@ -2,7 +2,7 @@
 
 Everything here is a pure function over `Decimal`s so the rules a school will
 argue about — where a boundary sits, how a tie is ranked, what a CGPA is —
-can be tested without a Postgres schema, and reused by the report card, the
+can be tested without a tenant database, and reused by the report card, the
 broadsheet and the transcript alike.
 
 Money-and-marks arithmetic is `Decimal`, never `float`: a 74.995 that prints

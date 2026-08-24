@@ -1,7 +1,7 @@
 """Liveness and readiness probes.
 
-`/healthz` must not touch the database — a probe that fails when Postgres
-blips would have the orchestrator kill healthy web workers.
+`/healthz` must not touch the database — a probe that fails when MySQL blips
+would have the orchestrator kill healthy web workers.
 """
 
 from django.db import connection
