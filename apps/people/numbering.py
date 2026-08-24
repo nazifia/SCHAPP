@@ -16,8 +16,6 @@ Examples: `CSC/25/0042`, `KC/2025/0042`, `{prog}/{yy}/{serial}`.
 import re
 from dataclasses import dataclass
 
-from django.db.models import Max
-
 from apps.tenants.db import tenant_atomic
 
 DEFAULT_ADMISSION_FORMAT = "{yy}/{serial}"
@@ -78,17 +76,36 @@ def next_number(model, field: str, fmt: str, context: NumberContext) -> str:
     """Allocate the next number for `model.field`.
 
     Derives the serial from the highest existing value with the same prefix,
-    under a row lock on the matching rows.
+    under a row lock on that highest value.
+
+    The lock is why this reads the top row rather than asking for
+    ``Max(field)``: ``Query.get_aggregation`` sets ``select_for_update = False``
+    unconditionally, so an aggregate never emits ``FOR UPDATE`` on any backend
+    and the lock this promised was never taken. SQLite hid it in development —
+    ``transaction_mode=IMMEDIATE`` holds the whole database for the length of
+    the transaction — while MySQL let two concurrent allocations read the same
+    maximum, render the same number and collide on the unique index, which the
+    bursar taking cash at the counter sees as a 500. Ordering and taking one
+    row keeps the lock.
+
+    Ordering by the string is the same answer ``Max`` gave: the serial is
+    zero-padded to a fixed width, so within one prefix the collation order and
+    the numeric order agree (both alike once a serial outgrows SERIAL_WIDTH).
 
     ponytail: max+1 under a lock, not a counter table. Two concurrent
-    admissions in the same department and year serialise on that lock; if
-    bulk import ever makes that hurt, add a per-prefix sequence table.
+    admissions in the same department and year serialise on that lock; if bulk
+    import ever makes that hurt, add a per-prefix sequence table. The one gap
+    left is the *first* number in a prefix, where there is no row to lock —
+    close that by retrying the insert on IntegrityError at the call site if it
+    is ever seen.
     """
     prefix = prefix_of(fmt, context)
     existing = (
         model.objects.select_for_update()
         .filter(**{f"{field}__startswith": prefix})
-        .aggregate(top=Max(field))["top"]
+        .order_by(f"-{field}")
+        .values_list(field, flat=True)
+        .first()
     )
 
     serial = 1
